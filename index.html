@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>라면 소생자 · 질문하는 AI (MVP)</title>
+    <style>
+        :root{
+        --bg:#0b0d12; --panel:#121621; --panel-2:#1a2030; --text:#e9edf5; --muted:#a9b4c7;
+        --acc:#7cc7ff; --acc-2:#ffd37c; --danger:#ff8a7c; --ok:#8dff7c;
+        --radius:18px; --shadow:0 10px 30px rgba(0,0,0,.35);
+        }
+        *{box-sizing:border-box}
+        html,body{height:100%}
+        body{margin:0;background:radial-gradient(1200px 800px at 80% -10%,#17203a33,transparent),var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Pretendard,sans-serif;color:var(--text);}
+        .wrap{max-width:980px;margin:40px auto;padding:0 16px}
+        header{display:flex;align-items:center;gap:16px;margin-bottom:16px}
+        header .logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc-2));display:grid;place-items:center;color:#0b0d12;font-weight:900;box-shadow:var(--shadow)}
+        header h1{font-size:clamp(20px,3.8vw,32px);margin:0}
+        header p{margin:0;color:var(--muted)}
+
+        .panel{background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid #222a3a;border-radius:var(--radius);box-shadow:var(--shadow)}
+        .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}
+        @media (max-width:860px){.grid{grid-template-columns:1fr;}}
+
+        .section{padding:18px}
+        .section h2{margin:0 0 10px;font-size:18px}
+        .section p.note{margin:.4rem 0 1rem;color:var(--muted);font-size:14px}
+
+        .row{display:flex;gap:8px;align-items:center;margin:8px 0}
+        .row input, .row select{flex:1;background:#0f1421;border:1px solid #2a3347;color:var(--text);border-radius:12px;padding:10px 12px}
+        .row button{background:#1e2a42;border:1px solid #2d3a58;color:var(--text);border-radius:12px;padding:10px 14px;cursor:pointer}
+        .row button:hover{filter:brightness(1.1)}
+
+        .chat{display:flex;flex-direction:column;gap:10px;padding:16px;height:460px;overflow:auto;border-top-left-radius:var(--radius);border-top-right-radius:var(--radius)}
+        .bubble{max-width:82%;padding:12px 14px;border-radius:14px;line-height:1.4}
+        .ai{align-self:flex-start;background:#12213a;border:1px solid #2b3c5a}
+        .me{align-self:flex-end;background:#1d2a2f;border:1px solid #2a3e3a}
+
+        .inputbar{display:flex;gap:10px;padding:12px;border-top:1px solid #26304a;background:#0e1422;border-bottom-left-radius:var(--radius);border-bottom-right-radius:var(--radius)}
+        .inputbar textarea{flex:1;background:#0f1421;border:1px solid #2a3347;color:var(--text);border-radius:12px;padding:12px;height:56px;resize:none}
+        .inputbar button{background:linear-gradient(135deg,var(--acc),#9fe6ff);color:#0b0d12;border:none;font-weight:700;border-radius:12px;padding:0 18px;cursor:pointer}
+
+        .state{padding:12px;border-top:1px dashed #2a3347;font-size:14px;color:var(--muted)}
+        .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+        .tag{font-size:12px;padding:6px 8px;border-radius:999px;background:#111928;border:1px solid #26304a;color:#c8d6f0}
+
+        .statbar{height:8px;background:#0e1422;border:1px solid #2b3550;border-radius:999px;overflow:hidden}
+        .statbar > i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4fd1ff,#b2f09b)}
+
+        .pill{display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #2c3750;border-radius:12px;background:#0e1422}
+        .pill input{width:140px}
+        .ghost{opacity:.8}
+        .muted{color:var(--muted)}
+
+        .actions{display:flex;gap:8px;flex-wrap:wrap}
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <header>
+        <div class="logo">🍜</div>
+        <div>
+            <h1>라면 소생자 · 질문하는 AI</h1>
+            <p>“AI가 스스로 모르는 것을 묻고 배워 라면을 재탄생시키는” 질문 중심 MVP</p>
+        </div>
+        </header>
+
+        <div class="grid">
+        <!-- 좌: 채팅/질문 -->
+        <section class="panel">
+            <div class="section">
+            <h2>대화</h2>
+            <p class="note">AI가 현재 지식의 빈칸을 발견하면 먼저 질문합니다. 답변은 자연어로 자유롭게 입력하세요.</p>
+            </div>
+            <div id="chat" class="chat"></div>
+            <div class="inputbar">
+            <textarea id="msg" placeholder="답변을 입력하거나, 질문하고 싶은 것을 물어보세요. (예: 2분 30초 삶으면 면 식감이 어떤가요?)"></textarea>
+            <button id="send">보내기</button>
+            </div>
+            <div class="state">
+            <div>지식 충족도</div>
+            <div class="statbar" aria-label="coverage"><i id="coverage"></i></div>
+            <div class="tags" id="needTags"></div>
+            </div>
+        </section>
+
+        <!-- 우: 세팅/세션/요약 -->
+        <section class="panel">
+            <div class="section">
+            <h2>세션</h2>
+            <div class="row">
+                <span class="pill">라면 이름 <input id="ramenName" placeholder="예: 신라면·커스텀 레시피"/></span>
+                <button id="start">세션 시작</button>
+                <button id="clear" class="ghost">초기화</button>
+            </div>
+            <p class="note">세션을 시작하면 AI가 우선순위 높은 질문부터 순서대로 던집니다.</p>
+            <div class="actions">
+                <button id="export">데이터 내보내기(JSON)</button>
+                <button id="import">데이터 가져오기(JSON)</button>
+                <input type="file" id="file" accept="application/json" hidden />
+                <button id="connectFile">세션 파일 연결</button>
+                <span class="note" style="font-size:12px">(Git 저장소 안의 <code>ramen_session.json</code>과 연결 권장)</span>
+            </div>
+            </div>
+            <div class="section">
+            <h2>지식 요약</h2>
+            <div id="summary" class="muted">세션을 시작하면 요약이 표시됩니다.</div>
+            </div>
+            <div class="section">
+            <h2>질문 정책</h2>
+            <p class="note">필수 → 중요 → 선택 항목 순으로 질문합니다. 이미 답한 내용은 건너뜁니다.</p>
+            <ul class="muted" style="margin:0 0 .5rem 1rem;line-height:1.6">
+                <li>필수: 물량/시간, 면/스프 기본, 맵기 임계, 국물 농도</li>
+                <li>중요: 토핑(계란, 파, 치즈), 기름/마늘/고추 가감, 라면 후 숙성</li>
+                <li>선택: 브랜드/원가/선호 지역맛, 영양(나트륨/칼로리)</li>
+            </ul>
+            <div class="tags" id="policyTags"></div>
+            </div>
+        </section>
+        </div>
+    </div>
+
+    <script>
+        // --- 간단한 상태 ---
+        const state = {
+        ramenName: "",
+        facts: {}, // key -> value
+        history: [], // {role:"ai"|"user", text}
+        };
+
+        // ▼ 여러 라면을 담는 v2 저장소
+        const store = { version: 2, profiles: {}, active: null };
+
+        // File System Access API 핸들 (선택 사항)
+        let sessionHandle = null; // 사용자 연결 시 실파일로 자동 저장/로드
+
+        // 질문 설계: key, text, hint, priority (0 필수, 1 중요, 2 선택), tags
+        const QUESTION_BANK = [
+        {key:"water_ml", text:"물은 몇 mL가 가장 맛있나요? (예: 430mL)", hint:"계량컵·전자저울", p:0, tags:["물량","농도"]},
+        {key:"boil_time", text:"면을 몇 분 몇 초 삶을 때 최적 식감인가요? (예: 2분30초)", hint:"스톱워치", p:0, tags:["시간","식감"]},
+        {key:"soup_profile", text:"국물의 기본 성향은? (맵기/짠맛/감칠맛/기름기 중 어느 축을 선호?)", hint:"키워드: 진한/담백/칼칼", p:0, tags:["국물","프로파일"]},
+        {key:"egg_style", text:"계란은 어떻게 쓰시나요? (안씀/풀어서/수란/반숙토핑)", hint:"선택·복수 가능", p:1, tags:["토핑","단백질"]},
+        ];
+
+        const POLICY_TAGS = [
+        ["필수","물량","시간","면","국물","맵기"],
+        ["중요","토핑","향","가감","타이밍"],
+        ["선택","브랜드","원가","취향","영양"],
+        ];
+
+        // --- 유틸 ---
+        const el = id => document.getElementById(id);
+        function addBubble(role, text, {record=true}={}){
+        if(record) state.history.push({role,text});
+        const b = document.createElement('div');
+        b.className = `bubble ${role==='ai'?'ai':'me'}`;
+        b.innerText = text;
+        el('chat').appendChild(b);
+        el('chat').scrollTop = el('chat').scrollHeight;
+        renderSummary();
+        }
+        function coverage(){
+        const total = QUESTION_BANK.length;
+        const answered = QUESTION_BANK.filter(q=> state.facts[q.key] !== undefined && state.facts[q.key] !== "").length;
+        return Math.round((answered/total)*100);
+        }
+        function nextQuestion(){
+        const unanswered = QUESTION_BANK.filter(q=> !state.facts[q.key]);
+        if(unanswered.length===0) return null;
+        unanswered.sort((a,b)=> a.p===b.p ? QUESTION_BANK.indexOf(a)-QUESTION_BANK.indexOf(b) : a.p-b.p);
+        return unanswered[0];
+        }
+
+        function renderNeeds(){
+        const needs = QUESTION_BANK.filter(q=> !state.facts[q.key]);
+        const tagBox = el('needTags');
+        tagBox.innerHTML = '';
+        needs.slice(0,10).forEach(q=>{
+            const t = document.createElement('span');
+            t.className='tag'; t.textContent = `요청: ${q.key}`;
+            tagBox.appendChild(t);
+        });
+        el('coverage').style.width = coverage()+"%";
+        }
+
+        function renderPolicy(){
+        const box = el('policyTags'); box.innerHTML='';
+        POLICY_TAGS.forEach(line=>{
+            const [lvl,...rest]=line;
+            const group = document.createElement('span');
+            group.className='tag';
+            group.textContent = lvl+": "+rest.join(', ');
+            box.appendChild(group);
+        })
+        }
+
+        function renderSummary(){
+        const s = el('summary');
+        if(!state.ramenName){ s.textContent = '세션을 시작하면 요약이 표시됩니다.'; return; }
+        const rows = QUESTION_BANK.map(q=>{
+            const v = state.facts[q.key];
+            const value = (v===undefined||v==="")? '<span class="muted">(미답변)</span>' : escapeHtml(String(v));
+            return `<tr><td>${q.key}</td><td>${value}</td></tr>`;
+        }).join('');
+        s.innerHTML = `
+            <div class="pill">활성 프로필 <b style="margin-left:6px">${escapeHtml(state.ramenName||'(없음)')}</b></div>
+            <div style="margin:.6rem 0">충족도: <b>${coverage()}%</b></div>
+            <table style="width:100%;border-collapse:collapse;border:1px solid #2a3347">
+            <thead><tr><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #2a3347">키</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #2a3347">값</th></tr></thead>
+            <tbody>${rows}</tbody>
+            </table>`;
+        renderNeeds();
+        }
+        function saveCurrentToStore(){
+            if(!store.active) return;
+            store.profiles[store.active] = {
+                facts: {...state.facts},
+                history: [...state.history],
+                updatedAt: Date.now(),
+                createdAt: store.profiles[store.active]?.createdAt || Date.now()
+            };
+        }
+        function loadProfile(name){
+            store.active = name;
+            const p = store.profiles[name];
+            if(p){
+                state.ramenName = name;
+                state.facts = {...(p.facts||{})};
+                state.history = [...(p.history||[])];
+            }else{
+                state.ramenName = name;
+                state.facts = {};
+                state.history = [];
+                store.profiles[name] = { facts:{}, history:[], createdAt: Date.now(), updatedAt: Date.now() };
+            }
+            el('chat').innerHTML='';
+            (state.history||[]).forEach(m=>{
+                const b=document.createElement('div'); b.className=`bubble ${m.role==='ai'?'ai':'me'}`; b.innerText=m.text;
+                el('chat').appendChild(b);
+            });
+            el('chat').scrollTop=el('chat').scrollHeight;
+            renderSummary();
+        }
+
+        function escapeHtml(str){
+        return str.replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
+        }
+
+        function startSession(){
+            const name = el('ramenName').value.trim() || '나의 라면';
+            saveCurrentToStore();     // 현재 작업 중인 프로필 먼저 저장
+            loadProfile(name);        // 새/기존 프로필 불러오기
+
+            if(state.history.length===0){
+                addBubble('ai', `안녕하세요! [${state.ramenName}] 연구를 시작합니다. 제가 먼저 몇 가지 물을게요.`);
+                askNext();
+            }else{
+                addBubble('ai', `프로필 [${state.ramenName}]을(를) 불러왔어요. 이어서 진행합니다.`);
+                askNext();  
+            }
+            fsSaveIfConnected();      // 파일로 저장
+        }
+
+        function askNext(){
+        const q = nextQuestion();
+        if(!q){ addBubble('ai','모든 핵심 질문이 채워졌어요! 원하시면 더 깊게 파고들 질문을 해주세요.'); fsSaveIfConnected(); return; }
+        const tip = q.hint? `(힌트: ${q.hint})` : '';
+        addBubble('ai', q.text + tip);
+        renderNeeds();
+        }
+
+        function handleUserMessage(){
+            const text = el('msg').value.trim(); 
+            if(!text) return;
+
+            el('msg').value='';
+            addBubble('me', text);
+
+            // 빠른 전환: "/use 라면이름"
+            if(text.startsWith('/use ')){
+                const target = text.slice(5).trim();
+                if(target){
+                    saveCurrentToStore();
+                    loadProfile(target);
+                    addBubble('ai', `프로필을 [${target}]으로 전환했습니다.`);
+                    fsSaveIfConnected();
+                    askNext();  
+                    return; // 함수 내부이므로 안전
+                }
+            }
+
+            const lastQ = [...QUESTION_BANK].find(q=> !state.facts[q.key]);
+            if(lastQ){ state.facts[lastQ.key] = text; }
+
+            if(/[?？]$/.test(text)){
+                addBubble('ai', '좋은 질문이에요. 우선 현재 데이터 기준으로 가설을 세워볼게요…');
+                const hypo = hypothesize();
+                addBubble('ai', hypo);
+            }
+
+            saveCurrentToStore();
+            fsSaveIfConnected();
+            askNext();
+        }
+
+        function hypothesize(){
+        const w = state.facts.water_ml||'물량 미정';
+        const t = state.facts.boil_time||'시간 미정';
+        const n = state.facts.noodle_type||'면 타입 미정';
+        const sp = state.facts.soup_profile||'국물 성향 미정';
+        const th = state.facts.spice_threshold||'임계 미정';
+        let tips = [];
+        if(state.facts.resting===undefined) tips.push('완성 후 20~40초 숙성 테스트를 해보면 면수 흡수로 농도가 안정될 수 있어요.');
+        if(state.facts.aroma_oil===undefined) tips.push('향미유는 불 끈 뒤 그릇에 두르는 방식과 냄비에 바로 넣는 방식을 각각 시험해보세요.');
+        if(state.facts.egg_style===undefined) tips.push('계란은 수란/스크램블/반숙 토핑 3-way로 비교해보면 재미있어요.');
+        const body = `현재 설정은 물 ${w}, 삶기 ${t}, 면 ${n}, 국물 ${sp}, 맵기 임계 ${th} 입니다.`
+        return body + (tips.length? "추천 실험: " + tips.join(' ') : "핵심 세팅이 거의 채워졌어요!");
+        }
+
+        // 내보내기/가져오기 (수동)
+        function exportJSON(){
+        const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `ramen_session_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url);
+        }
+        function importJSON(file){
+        const r = new FileReader();
+        r.onload = e=>{
+            try{
+            const data = JSON.parse(e.target.result);
+            if(!data || typeof data !== 'object') throw new Error('형식 오류');
+            Object.assign(state, {ramenName:data.ramenName||'나의 라면', facts:data.facts||{}, history:data.history||[]});
+            el('chat').innerHTML='';
+            state.history.forEach(m=>{
+                const b = document.createElement('div');
+                b.className = `bubble ${m.role==='ai'?'ai':'me'}`;
+                b.innerText = m.text;
+                el('chat').appendChild(b);
+            });
+            el('chat').scrollTop = el('chat').scrollHeight;
+            renderSummary();
+            addBubble('ai','가져온 세션을 이어서 진행합니다.', {record:true});
+            fsSaveIfConnected();
+            }catch(err){ alert('JSON 형식이 올바르지 않습니다.'); }
+        };
+        r.readAsText(file);
+        }
+
+        // --- File System Access API: 세션 파일 연결/저장/복구 ---
+        async function pickSessionFile(){
+        if(!('showSaveFilePicker' in window)){
+            alert('이 브라우저는 파일 시스템 접근을 지원하지 않습니다. Chrome/Edge 권장');
+            return;
+        }
+        try{
+            sessionHandle = await window.showSaveFilePicker({
+            suggestedName: 'ramen_session.json',
+            types: [{ description: 'JSON', accept: {'application/json': ['.json']} }]
+            });
+            await persistHandle(sessionHandle);
+            await fsSaveIfConnected();
+            addBubble('ai','세션 파일과 연결했어요. 이제부터 자동 저장/로딩됩니다.');
+        }catch(e){ /* 사용자가 취소한 경우 등 무시 */ }
+        }
+
+        async function fsSaveIfConnected(){
+        try{
+            if(!sessionHandle) sessionHandle = await restoreHandle();
+            if(!sessionHandle) return;
+
+            saveCurrentToStore(); // state→store 반영
+            const writable = await sessionHandle.createWritable();
+            await writable.write(JSON.stringify(store, null, 2));
+            await writable.close();
+        }catch(e){ /* 권한 거부/손실 시 무시 */ }
+        }
+
+        async function fsLoadIfConnected(){
+            try{
+                if(!sessionHandle) sessionHandle = await restoreHandle();
+                if(!sessionHandle) return false;
+                const file = await sessionHandle.getFile();
+                const data = JSON.parse(await file.text());
+                
+                if(data && data.profiles){ // v2
+                    store.version = data.version || 2;
+                    store.profiles = data.profiles || {};
+                    store.active = data.active || Object.keys(store.profiles)[0] || null;
+                    if(store.active){
+                        loadProfile(store.active);
+                        addBubble('ai','세션 파일에서 자동 복구했어요.', {record:true});
+                        askNext();  
+                    }else{
+                        renderPolicy(); renderSummary();
+                    }
+                    return true;
+                } else if(data && (data.ramenName || data.facts || data.history)){ // v1 → v2
+                    const name = data.ramenName || '나의 라면';
+                    store.version = 2;
+                    store.profiles = {};
+                    store.active = name;
+                    store.profiles[name] = {
+                        facts: data.facts || {},
+                        history: data.history || [],
+                        createdAt: Date.now(),
+                        updatedAt: Date.now()
+                    };
+                    loadProfile(name);
+                    addBubble('ai','구버전 세션을 새 포맷으로 마이그레이션했어요.', {record:true});
+                    await fsSaveIfConnected();          // ★ 저장 시도
+                    console.log('migrated->saved');     // ★ 저장 확인용
+                    return true;
+                }
+            }catch(e){ /* 핸들 만료/파일 삭제 등 */ }
+                return false;
+        }
+
+        // --- IndexedDB로 파일 핸들 보존 ---
+        function idb(){
+        return new Promise(res=>{
+            const req = indexedDB.open('ramen-db',1);
+            req.onupgradeneeded = ()=> req.result.createObjectStore('handles');
+            req.onsuccess = ()=> res(req.result);
+        });
+        }
+        async function persistHandle(handle){
+        const db = await idb(); const tx = db.transaction('handles','readwrite');
+        tx.objectStore('handles').put(handle,'session');
+        return new Promise(ok=>{ tx.oncomplete = ()=> ok(); });
+        }
+        async function restoreHandle(){
+        const db = await idb(); const tx = db.transaction('handles','readonly');
+        return new Promise(ok=>{
+            const r = tx.objectStore('handles').get('session');
+            r.onsuccess = ()=> ok(r.result||null);
+            r.onerror = ()=> ok(null);
+        });
+        }
+
+        // 이벤트 바인딩
+        el('start').onclick = startSession;
+        el('clear').onclick = ()=>{ 
+        state.ramenName=''; state.facts={}; state.history=[]; 
+        el('chat').innerHTML=''; renderSummary(); 
+        try{ localStorage.removeItem('ramen_session_v1'); }catch(_){ }
+        fsSaveIfConnected();
+        };
+        el('send').onclick = handleUserMessage;
+        el('msg').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); handleUserMessage(); }});
+        el('export').onclick = exportJSON;
+        el('import').onclick = ()=> el('file').click();
+        el('file').addEventListener('change', e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; });
+        el('connectFile').onclick = pickSessionFile;
+
+        // 자동 저장(2초마다) - localStorage (보조 백업)
+        try{
+        setInterval(()=>{
+            localStorage.setItem('ramen_session_v1', JSON.stringify(state));
+        }, 2000);
+        }catch(_){ }
+
+        // 페이지 로드시: 1) 파일 자동 복구 시도 -> 2) 없으면 localStorage 복구
+        window.addEventListener('load', async ()=>{
+        const loaded = await fsLoadIfConnected();
+        if(!loaded){
+            try{
+            const saved = localStorage.getItem('ramen_session_v1');
+            if(saved){
+                const data = JSON.parse(saved);
+                if(data && typeof data==='object'){
+                    Object.assign(state, data);
+                    el('chat').innerHTML='';
+                    (state.history||[]).forEach(m=>{
+                        const b = document.createElement('div');
+                        b.className = `bubble ${m.role==='ai'?'ai':'me'}`;
+                        b.innerText = m.text;
+                        el('chat').appendChild(b);
+                    });
+                    el('chat').scrollTop = el('chat').scrollHeight;
+                    renderSummary();
+                    addBubble('ai','이전 로컬 세션을 복구했어요 🍜', {record:true});
+                    askNext();  
+                } else { renderPolicy(); renderSummary(); }
+            } else { renderPolicy(); renderSummary(); }
+            }catch(_){ renderPolicy(); renderSummary(); }
+        }
+        });
+    </script>
+</body>
+</html>
