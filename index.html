@@ -6,13 +6,32 @@
     <title>라면 소생자 · 질문하는 AI (MVP)</title>
     <style>
         :root{
-        --bg:#0b0d12; --panel:#121621; --panel-2:#1a2030; --text:#e9edf5; --muted:#a9b4c7;
-        --acc:#7cc7ff; --acc-2:#ffd37c; --danger:#ff8a7c; --ok:#8dff7c;
-        --radius:18px; --shadow:0 10px 30px rgba(0,0,0,.35);
+            --bg: #0b0d12; 
+            --panel: #121621; 
+            --panel-2: #1a2030; 
+            --text: #e9edf5; 
+            --muted: #a9b4c7;
+            --acc: #7cc7ff; 
+            --acc-2: #ffd37c; 
+            --danger: #ff8a7c; 
+            --ok: #8dff7c;
+            --radius: 18px; 
+            --shadow: 0 10px 30px rgba(0,0,0,.35);
         }
-        *{box-sizing:border-box}
-        html,body{height:100%}
-        body{margin:0;background:radial-gradient(1200px 800px at 80% -10%,#17203a33,transparent),var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Pretendard,sans-serif;color:var(--text);}
+        *{
+            box-sizing: border-box
+        }
+        
+        html,body{
+            height: 100%
+        }
+
+        body{
+            margin: 0;
+            background: radial-gradient(1200px 800px at 80% -10%,#17203a33,transparent),var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Pretendard,sans-serif;
+            color: var(--text);
+        }
+
         .wrap{max-width:980px;margin:40px auto;padding:0 16px}
         header{display:flex;align-items:center;gap:16px;margin-bottom:16px}
         header .logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc-2));display:grid;place-items:center;color:#0b0d12;font-weight:900;box-shadow:var(--shadow)}
@@ -124,9 +143,10 @@
     <script>
         // --- 간단한 상태 ---
         const state = {
-        ramenName: "",
-        facts: {}, // key -> value
-        history: [], // {role:"ai"|"user", text}
+            ramenName: "",
+            facts: {}, // key -> value
+            history: [], // {role:"ai"|"user", text}
+            doneNotified: false,   // ✅ 추가: 완료 멘트 중복 방지
         };
 
         // ▼ 여러 라면을 담는 v2 저장소
@@ -234,6 +254,7 @@
                 state.history = [];
                 store.profiles[name] = { facts:{}, history:[], createdAt: Date.now(), updatedAt: Date.now() };
             }
+            state.doneNotified = false; // ✅ 추가
             el('chat').innerHTML='';
             (state.history||[]).forEach(m=>{
                 const b=document.createElement('div'); b.className=`bubble ${m.role==='ai'?'ai':'me'}`; b.innerText=m.text;
@@ -263,11 +284,22 @@
         }
 
         function askNext(){
-        const q = nextQuestion();
-        if(!q){ addBubble('ai','모든 핵심 질문이 채워졌어요! 원하시면 더 깊게 파고들 질문을 해주세요.'); fsSaveIfConnected(); return; }
-        const tip = q.hint? `(힌트: ${q.hint})` : '';
-        addBubble('ai', q.text + tip);
-        renderNeeds();
+            const q = nextQuestion();
+            if(!q){
+            // ✅ 완료 멘트는 한 번만
+                if(!state.doneNotified){
+                    addBubble('ai','모든 핵심 질문이 채워졌어요! 원하시면 더 깊게 파고들 질문을 해주세요.');
+                    state.doneNotified = true;
+                }
+                fsSaveIfConnected();
+                return;
+            }
+            // ✅ 남은 질문이 생기면 플래그 해제 (예: 질문은행 확장 등)
+            state.doneNotified = false;
+            
+            const tip = q.hint? `(힌트: ${q.hint})` : '';
+            addBubble('ai', q.text + tip);
+            renderNeeds();
         }
 
         function handleUserMessage(){
@@ -291,7 +323,11 @@
             }
 
             const lastQ = [...QUESTION_BANK].find(q=> !state.facts[q.key]);
-            if(lastQ){ state.facts[lastQ.key] = text; }
+            let advanced = false;
+            if(lastQ){ 
+                state.facts[lastQ.key] = text; 
+                advanced = true;
+            }
 
             if(/[?？]$/.test(text)){
                 addBubble('ai', '좋은 질문이에요. 우선 현재 데이터 기준으로 가설을 세워볼게요…');
@@ -301,7 +337,10 @@
 
             saveCurrentToStore();
             fsSaveIfConnected();
-            askNext();
+            
+            if(advanced){
+                askNext();
+            }
         }
 
         function hypothesize(){
@@ -442,10 +481,11 @@
         // 이벤트 바인딩
         el('start').onclick = startSession;
         el('clear').onclick = ()=>{ 
-        state.ramenName=''; state.facts={}; state.history=[]; 
-        el('chat').innerHTML=''; renderSummary(); 
-        try{ localStorage.removeItem('ramen_session_v1'); }catch(_){ }
-        fsSaveIfConnected();
+            state.ramenName=''; state.facts={}; state.history=[]; 
+            state.doneNotified = false; // ✅ 추가
+            el('chat').innerHTML=''; renderSummary(); 
+            try{ localStorage.removeItem('ramen_session_v1'); }catch(_){ }
+            fsSaveIfConnected();
         };
         el('send').onclick = handleUserMessage;
         el('msg').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); handleUserMessage(); }});

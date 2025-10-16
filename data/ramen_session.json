@@ -1,5 +1,12 @@
 {
-    "version": 2,
-    "profiles": {},
-    "active": null
+  "version": 2,
+  "profiles": {
+    "신라면": {
+      "facts": {},
+      "history": [],
+      "updatedAt": 1760583307886,
+      "createdAt": 1760580815711
+    }
+  },
+  "active": "신라면"
 }
