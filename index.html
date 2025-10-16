@@ -273,17 +273,9 @@
             </div>
             </div>
             <div class="section">
-            <h2>지식 요약</h2>
             <div id="summary" class="muted">세션을 시작하면 요약이 표시됩니다.</div>
             </div>
             <div class="section">
-            <h2>질문 정책</h2>
-            <p class="note">필수 → 중요 → 선택 항목 순으로 질문합니다. 이미 답한 내용은 건너뜁니다.</p>
-            <ul class="muted" style="margin:0 0 .5rem 1rem;line-height:1.6">
-                <li>필수: 물량/시간, 면/스프 기본, 맵기 임계, 국물 농도</li>
-                <li>중요: 토핑(계란, 파, 치즈), 기름/마늘/고추 가감, 라면 후 숙성</li>
-                <li>선택: 브랜드/원가/선호 지역맛, 영양(나트륨/칼로리)</li>
-            </ul>
             <div class="tags" id="policyTags"></div>
             </div>
         </section>
@@ -390,11 +382,7 @@
         }).join('');
         s.innerHTML = `
             <div class="pill">활성 프로필 <b style="margin-left:6px">${escapeHtml(state.ramenName||'(없음)')}</b></div>
-            <div style="margin:.6rem 0">충족도: <b>${coverage()}%</b></div>
-            <table style="width:100%;border-collapse:collapse;border:1px solid #2a3347">
-            <thead><tr><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #2a3347">키</th><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #2a3347">값</th></tr></thead>
-            <tbody>${rows}</tbody>
-            </table>`;
+            <div style="margin:.6rem 0">충족도: <b>${coverage()}%</b></div>`;
         renderNeeds();
         }
         function saveCurrentToStore(){
