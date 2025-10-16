@@ -244,7 +244,7 @@
             </div>
             <div id="chat" class="chat"></div>
             <div class="inputbar">
-            <textarea id="msg" placeholder="답변을 입력하거나, 질문하고 싶은 것을 물어보세요. (예: 2분 30초 삶으면 면 식감이 어떤가요?)"></textarea>
+            <textarea id="msg" placeholder="라면에 대해 궁금한것을 물어보세요"></textarea>
             <button id="send">보내기</button>
             </div>
             <div class="state">
@@ -259,7 +259,7 @@
             <div class="section">
             <h2>세션</h2>
             <div class="row">
-                <span class="pill">라면 이름 <input id="ramenName" placeholder="예: 신라면·커스텀 레시피"/></span>
+                <span class="pill">라면 이름 <input id="ramenName"/></span>
                 <button id="start">세션 시작</button>
                 <button id="clear" class="ghost">초기화</button>
             </div>
@@ -321,15 +321,30 @@
 
         // --- 유틸 ---
         const el = id => document.getElementById(id);
+
         function addBubble(role, text, {record=true}={}){
-        if(record) state.history.push({role,text});
-        const b = document.createElement('div');
-        b.className = `bubble ${role==='ai'?'ai':'me'}`;
-        b.innerText = text;
-        el('chat').appendChild(b);
-        el('chat').scrollTop = el('chat').scrollHeight;
-        renderSummary();
+            // ✅ 같은 AI 문구가 직전에 이미 출력됐다면 무시
+            if(role === 'ai'){
+                const lastAi = [...state.history].reverse().find(m => m.role === 'ai');
+                if(lastAi && lastAi.text === text){
+                    if(record) state.history.push({role, text}); // (히스토리는 남기고 화면 출력은 생략)
+                    return; // 화면 중복 출력 방지
+                }
+            }
+
+            if(record) state.history.push({role,text});
+            const b = document.createElement('div');
+            b.className = `bubble ${role==='ai'?'ai':'me'}`;
+            b.innerText = text;
+            el('chat').appendChild(b);
+            el('chat').scrollTop = el('chat').scrollHeight;
+            renderSummary();
         }
+
+        function allDone(){
+            return QUESTION_BANK.every(q => state.facts[q.key] !== undefined && state.facts[q.key] !== "");
+        }
+
         function coverage(){
         const total = QUESTION_BANK.length;
         const answered = QUESTION_BANK.filter(q=> state.facts[q.key] !== undefined && state.facts[q.key] !== "").length;
@@ -391,6 +406,7 @@
                 createdAt: store.profiles[store.active]?.createdAt || Date.now()
             };
         }
+
         function loadProfile(name){
             store.active = name;
             const p = store.profiles[name];
@@ -404,7 +420,7 @@
                 state.history = [];
                 store.profiles[name] = { facts:{}, history:[], createdAt: Date.now(), updatedAt: Date.now() };
             }
-            state.doneNotified = false; // ✅ 추가
+            state.doneNotified = allDone(); // ✅ 추가
             el('chat').innerHTML='';
             (state.history||[]).forEach(m=>{
                 const b=document.createElement('div'); b.className=`bubble ${m.role==='ai'?'ai':'me'}`; b.innerText=m.text;
@@ -441,7 +457,6 @@
                     addBubble('ai','모든 핵심 질문이 채워졌어요! 원하시면 더 깊게 파고들 질문을 해주세요.');
                     state.doneNotified = true;
                 }
-                fsSaveIfConnected();
                 return;
             }
             // ✅ 남은 질문이 생기면 플래그 해제 (예: 질문은행 확장 등)
@@ -467,15 +482,17 @@
                     loadProfile(target);
                     addBubble('ai', `프로필을 [${target}]으로 전환했습니다.`);
                     fsSaveIfConnected();
-                    askNext();  
-                    return; // 함수 내부이므로 안전
+                    if(!allDone()){
+                        askNext();
+                    }
+                    return;
                 }
             }
 
-            const lastQ = [...QUESTION_BANK].find(q=> !state.facts[q.key]);
+            const pending = QUESTION_BANK.find(q => !state.facts[q.key]);
             let advanced = false;
-            if(lastQ){ 
-                state.facts[lastQ.key] = text; 
+            if(pending){ 
+                state.facts[pending.key] = text; 
                 advanced = true;
             }
 
