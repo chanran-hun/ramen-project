@@ -306,11 +306,146 @@
         ];
 
         const POLICY_TAGS = [
-        ["필수","물량","시간","면","국물","맵기"],
-        ["중요","토핑","향","가감","타이밍"],
-        ["선택","브랜드","원가","취향","영양"],
+        ["필수","물량","시간","국물"],
+        ["중요","토핑"],
         ];
 
+        const LABELS = {
+            water_ml: "물량(ml)",
+            boil_time: "삶는 시간",
+            soup_profile: "국물 성향",
+            egg_style: "계란 스타일",
+        };
+
+        const norm = s => (s||"").toLowerCase().replace(/\s+/g,"");
+
+       // ▼ 추가: 프로필 이름 추출 (문장 속에서 기존 프로필명 찾아내기)
+        function extractProfileNameFrom(text){
+            const t = text.replace(/\s+/g,"");
+            const names = Object.keys(store.profiles||{});
+            let hit = null;
+            for(const name of names){
+                if(!name) continue;
+                if(t.includes(name.replace(/\s+/g,""))) { hit = name; break; }
+            }
+            return hit;
+        }
+
+        // ▼ 추가: 질문에서 어떤 필드를 묻는지 판별
+        function detectField(text){
+            const t = norm(text);
+            if(/물|물량|ml|물몇|물은몇/.test(t)) return "water_ml";
+            if(/삶|끓이|시간|분|초|보일|boil/.test(t)) return "boil_time";
+            if(/국물|맛|프로파일|맵|짠|감칠|기름/.test(t)) return "soup_profile";
+            if(/계란|달걀|에그|수란|반숙|풀어/.test(t)) return "egg_style";
+            return null;
+        }
+
+        // ▼ 추가: 남은 질문 나열
+        function listNeedsFor(name){
+            const prof = store.profiles?.[name];
+            if(!prof) return "해당 프로필이 없어요.";
+            const needs = QUESTION_BANK.filter(q=>!prof.facts?.[q.key]).map(q=>LABELS[q.key]||q.key);
+            return needs.length ? `아직 미답변: ${needs.join(", ")}` : "모든 핵심 질문이 채워졌어요!";
+        }
+
+        // ▼ 추가: 요약 문자열 생성
+        function makeSummary(name){
+            const prof = store.profiles?.[name];
+            if(!prof) return "해당 프로필이 없어요.";
+            const pairs = QUESTION_BANK.map(q=>{
+                const v = prof.facts?.[q.key];
+                return `· ${LABELS[q.key]||q.key}: ${v? v : "(미답변)"}`;
+            });
+            return `[${name}] 요약\n` + pairs.join("\n");
+        }
+
+        // ▼ 추가: 두 프로필 비교
+        function compareProfiles(a,b, field=null){
+            const A = store.profiles?.[a], B = store.profiles?.[b];
+            if(!A || !B) return "비교할 프로필 이름을 확인해주세요.";
+            const keys = field? [field] : QUESTION_BANK.map(q=>q.key);
+            const lines = keys.map(k=>{
+                const lab = LABELS[k]||k;
+                const va = A.facts?.[k] ?? "(미답변)";
+                const vb = B.facts?.[k] ?? "(미답변)";
+                return `· ${lab}: ${a}=${va} | ${b}=${vb}`;
+            });
+            return `프로필 비교: ${a} vs ${b}\n` + lines.join("\n");
+        }
+
+        // ▼ 추가: 자연어로 Q&A 수행
+        function answerQuestion(text){
+            const t = norm(text);
+
+            // 1) 프로필 전환 의도: "열라면(으)로 전환/바꿔줘"
+            let m = t.match(/(.+?)(으)?로전환|(.+?)로바꿔줘/);
+            if(m){
+                const cand = extractProfileNameFrom(text) || (m[1]||m[3]);
+                if(cand && store.profiles[cand]){
+                saveCurrentToStore();
+                loadProfile(cand);
+                fsSaveIfConnected();
+                return `프로필을 [${cand}]으로 전환했어요.`;
+                }
+                return "그 이름의 프로필을 찾지 못했어요. 기존 프로필 이름으로 다시 말씀해 주세요.";
+            }
+
+            // 2) 프로필 목록/활성 프로필
+            if(/프로필목록|리스트|무슨라면|어떤라면/.test(t)){
+                const names = Object.keys(store.profiles||{});
+                return names.length? `프로필 목록: ${names.join(", ")}` : "아직 저장된 프로필이 없어요.";
+            }
+            if(/활성프로필|현재프로필|지금무엇/.test(t)){
+                return store.active? `현재 활성 프로필: [${store.active}]` : "활성 프로필이 설정되지 않았어요.";
+            }
+
+            // 3) 요약/정리
+            if(/요약|정리|프로필보여줘|세팅보여줘/.test(t)){
+                const name = extractProfileNameFrom(text) || store.active || state.ramenName;
+                if(!name) return "어느 프로필을 요약할지 알려주세요.";
+                return makeSummary(name);
+            }
+
+            // 4) 남은 질문
+            if(/미답변|남은질문|뭐가아직|충족도|완료율/.test(t)){
+                const name = extractProfileNameFrom(text) || store.active || state.ramenName;
+                if(!name) return "어느 프로필 기준인지 알려주세요.";
+                if(/충족도|완료율/.test(t)){
+                const prof = store.profiles?.[name];
+                if(!prof) return "해당 프로필이 없어요.";
+                const total = QUESTION_BANK.length;
+                const answered = QUESTION_BANK.filter(q=> prof.facts?.[q.key]).length;
+                const pct = Math.round(answered/total*100);
+                return `[${name}] 충족도: ${pct}% (${answered}/${total})`;
+                }
+                return listNeedsFor(name);
+            }
+
+            // 5) 두 프로필 비교: "신라면과 열라면 비교", "… 물량 비교"
+            m = text.match(/(.+?)와 (.+?) (비교|차이|어떄|어때)/);
+            if(m){
+                const a = extractProfileNameFrom(m[1]?.trim()) || m[1]?.trim();
+                const b = extractProfileNameFrom(m[2]?.trim()) || m[2]?.trim();
+                const field = detectField(text); // 특정 항목 비교면 그 항목만
+                return compareProfiles(a,b,field);
+            }
+
+            // 6) 특정 값 질의: "신라면 물 몇 ml야?", "물량 알려줘", "삶는 시간?"
+            const field = detectField(text);
+            if(field){
+                const name = extractProfileNameFrom(text) || store.active || state.ramenName;
+                if(!name) return "어느 프로필의 값을 볼지 알려주세요.";
+                const prof = store.profiles?.[name];
+                if(!prof) return "해당 프로필이 없어요.";
+                const val = prof.facts?.[field];
+                if(val===undefined || val==="") return `[${name}]의 ${LABELS[field]||field}는 아직 미답변이에요.`;
+                return `[${name}]의 ${LABELS[field]||field}: ${val}`;
+        }
+
+        // 매칭 실패 → null (호출 측에서 가설(hypothesize)로 폴백)
+        return null;
+        }
         // --- 유틸 ---
         const el = id => document.getElementById(id);
 
