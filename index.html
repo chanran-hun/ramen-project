@@ -299,10 +299,10 @@
 
         // 질문 설계: key, text, hint, priority (0 필수, 1 중요, 2 선택), tags
         const QUESTION_BANK = [
-        {key:"water_ml", text:"물은 몇 mL가 가장 맛있나요? (예: 430mL)", hint:"계량컵·전자저울", p:0, tags:["물량","농도"]},
-        {key:"boil_time", text:"면을 몇 분 몇 초 삶을 때 최적 식감인가요? (예: 2분30초)", hint:"스톱워치", p:0, tags:["시간","식감"]},
-        {key:"soup_profile", text:"국물의 기본 성향은? (맵기/짠맛/감칠맛/기름기 중 어느 축을 선호?)", hint:"키워드: 진한/담백/칼칼", p:0, tags:["국물","프로파일"]},
-        {key:"egg_style", text:"계란은 어떻게 쓰시나요? (안씀/풀어서/수란/반숙토핑)", hint:"선택·복수 가능", p:1, tags:["토핑","단백질"]},
+        {key:"water_ml", text:"물은 몇 mL가 가장 맛있나요?", p:0, tags:["물량","농도"]},
+        {key:"boil_time", text:"면을 몇 분 몇 초 삶을 때 최적 식감인가요?", p:0, tags:["시간","식감"]},
+        {key:"soup_profile", text:"국물의 기본 성향은?", p:0, tags:["국물","프로파일"]},
+        {key:"egg_style", text:"계란은 어떻게 쓰시나요?", p:1, tags:["토핑","단백질"]},
         ];
 
         const POLICY_TAGS = [
@@ -610,6 +610,15 @@
                     }
                     return;
                 }
+            }
+
+            // ▼ 추가: 자연어 Q&A 먼저 시도
+            const maybeAnswer = answerQuestion(text);
+            if(maybeAnswer){
+                addBubble('ai', maybeAnswer);
+                saveCurrentToStore();
+                fsSaveIfConnected();
+                return;
             }
 
             const pending = QUESTION_BANK.find(q => !state.facts[q.key]);
