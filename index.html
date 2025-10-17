@@ -214,15 +214,48 @@
             color: #c8d6f0
         }
 
-        .statbar{height:8px;background:#0e1422;border:1px solid #2b3550;border-radius:999px;overflow:hidden}
-        .statbar > i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4fd1ff,#b2f09b)}
+        .statbar{
+            height: 8px;
+            background: #0e1422;
+            border: 1px solid #2b3550;
+            border-radius: 999px;
+            overflow: hidden
+        }
+        
+        .statbar > i{
+            display: block;
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg,#4fd1ff,#b2f09b)
+        }
 
-        .pill{display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #2c3750;border-radius:12px;background:#0e1422}
-        .pill input{width:140px}
-        .ghost{opacity:.8}
-        .muted{color:var(--muted)}
+        .pill{
+            display:inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border: 1px solid #2c3750;
+            border-radius: 12px;
+            background: #0e1422
+        }
 
-        .actions{display:flex;gap:8px;flex-wrap:wrap}
+        .pill input{
+            width:140px
+        }
+
+        .ghost{
+            opacity: .8
+        }
+
+        .muted{
+            color: var(--muted)
+        }
+
+        .actions{
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap
+        }
     </style>
 </head>
 <body>
@@ -337,7 +370,7 @@
             if(/물|물량|ml|물몇|물은몇/.test(t)) return "water_ml";
             if(/삶|끓이|시간|분|초|보일|boil/.test(t)) return "boil_time";
             if(/국물|맛|프로파일|맵|짠|감칠|기름/.test(t)) return "soup_profile";
-            if(/계란|달걀|에그|수란|반숙|풀어/.test(t)) return "egg_style";
+            if(/계란|달걀|에그|수란|반숙|토핑/.test(t)) return "egg_style";
             return null;
         }
 
