@@ -348,7 +348,7 @@
             boil_time: "삶는 시간",
             soup_profile: "국물 성향",
             egg_style: "계란 스타일",
-        };
+        };  
 
         const norm = s => (s||"").toLowerCase().replace(/\s+/g,"");
 
@@ -485,11 +485,9 @@
         const el = id => document.getElementById(id);
 
         function addBubble(role, text, {record=true}={}){
-            // ✅ 같은 AI 문구가 직전에 이미 출력됐다면 무시
             if(role === 'ai'){
                 const lastAi = [...state.history].reverse().find(m => m.role === 'ai');
                 if(lastAi && lastAi.text === text){
-                    if(record) state.history.push({role, text}); // (히스토리는 남기고 화면 출력은 생략)
                     return; // 화면 중복 출력 방지
                 }
             }
@@ -552,7 +550,8 @@
             const rows = QUESTION_BANK.map(q=>{
                 const v = state.facts[q.key];
                 const value = (v===undefined||v==="")? '<span class="muted">(미답변)</span>' : escapeHtml(String(v));
-                return `<tr><td>${q.tags[0]}</td><td>${value}</td></tr>`;
+                const label = LABELS[q.key] || q.key; // 🔁 변경
+                return `<tr><td>${label}</td><td>${value}</td></tr>`;  // 🔁 변경
             }).join('');
             s.innerHTML = `
             <div class="pill">활성 프로필 <b style="margin-left:6px">${escapeHtml(state.ramenName||'(없음)')}</b></div>
@@ -682,7 +681,8 @@
             }
 
             // 3) “?”가 있는 입력만 자연어 Q&A로 간주 (값 입력 오인 방지)
-            if(/[?？]$/.test(text)){
+            const looksQuestion = /[?？]$/.test(text) || /(몇|어떻게|알려줘|보여줘|비교|차이|요약|전환|바꿔줘)/.test(norm(text));
+            if(looksQuestion){
                 const maybeAnswer = answerQuestion(text);
                 if(maybeAnswer){
                 addBubble('ai', maybeAnswer);
@@ -718,32 +718,33 @@
 
         // 내보내기/가져오기 (수동)
         function exportJSON(){
-        const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = `ramen_session_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url);
+            const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `ramen_session_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url);
         }
+
         function importJSON(file){
-        const r = new FileReader();
-        r.onload = e=>{
-            try{
-            const data = JSON.parse(e.target.result);
-            if(!data || typeof data !== 'object') throw new Error('형식 오류');
-            Object.assign(state, {ramenName:data.ramenName||'나의 라면', facts:data.facts||{}, history:data.history||[]});
-            el('chat').innerHTML='';
-            state.history.forEach(m=>{
-                const b = document.createElement('div');
-                b.className = `bubble ${m.role==='ai'?'ai':'me'}`;
-                b.innerText = m.text;
-                el('chat').appendChild(b);
-            });
-            el('chat').scrollTop = el('chat').scrollHeight;
-            renderSummary();
-            addBubble('ai','가져온 세션을 이어서 진행합니다.', {record:true});
-            fsSaveIfConnected();
-            }catch(err){ alert('JSON 형식이 올바르지 않습니다.'); }
-        };
-        r.readAsText(file);
+            const r = new FileReader();
+            r.onload = e=>{
+                try{
+                    const data = JSON.parse(e.target.result);
+                    if(!data || typeof data !== 'object') throw new Error('형식 오류');
+                    Object.assign(state, {ramenName:data.ramenName||'나의 라면', facts:data.facts||{}, history:data.history||[]});
+                    el('chat').innerHTML='';
+                    state.history.forEach(m=>{
+                        const b = document.createElement('div');
+                        b.className = `bubble ${m.role==='ai'?'ai':'me'}`;
+                        b.innerText = m.text;
+                        el('chat').appendChild(b);
+                    });
+                    el('chat').scrollTop = el('chat').scrollHeight;
+                    renderSummary();
+                    addBubble('ai','가져온 세션을 이어서 진행합니다.', {record:true});
+                    fsSaveIfConnected();
+                }catch(err){ alert('JSON 형식이 올바르지 않습니다.'); }
+            };
+            r.readAsText(file);
         }
 
         // --- File System Access API: 세션 파일 연결/저장/복구 ---
