@@ -326,16 +326,18 @@
 
         // ▼ 여러 라면을 담는 v2 저장소
         const store = { version: 2, profiles: {}, active: null };
+        store.schema = store.schema || { customQuestions: [] }; 
+        store.synonyms = store.synonyms || {}; // { fieldKey: Set<string> }를 문자열 배열로 저장
 
         // File System Access API 핸들 (선택 사항)
         let sessionHandle = null; // 사용자 연결 시 실파일로 자동 저장/로드
 
         // 질문 설계: key, text, hint, priority (0 필수, 1 중요, 2 선택), tags
         const QUESTION_BANK = [
-        {key:"water_ml", text:"물은 몇 mL가 가장 맛있나요?", p:0, tags:["물량","농도"]},
-        {key:"boil_time", text:"면을 몇 분 몇 초 삶을 때 최적 식감인가요?", p:0, tags:["시간","식감"]},
-        {key:"soup_profile", text:"국물의 기본 성향은?", p:0, tags:["국물","프로파일"]},
-        {key:"egg_style", text:"계란은 어떻게 쓰시나요?", p:1, tags:["토핑","단백질"]},
+            {key:"water_ml", text:"물은 몇 mL가 가장 맛있나요?", p:0, tags:["물량","농도"]},
+            {key:"boil_time", text:"면을 몇 분 몇 초 삶을 때 최적 식감인가요?", p:0, tags:["시간","식감"]},
+            {key:"soup_profile", text:"국물의 기본 성향은?", p:0, tags:["국물","프로파일"]},
+            {key:"egg_style", text:"계란은 어떻게 쓰시나요?", p:1, tags:["토핑","단백질"]},
         ];
 
         const POLICY_TAGS = [
@@ -379,7 +381,7 @@
         function listNeedsFor(name){
             const prof = store.profiles?.[name];
             if(!prof) return "해당 프로필이 없어요.";
-            const needs = QUESTION_BANK.filter(q=>!prof.facts?.[q.key]).map(q=>LABELS[q.key]||q.key);
+            const needs = getAllQuestions().filter(q=>!prof.facts?.[q.key]).map(q=>LABELS[q.key]||q.key);
             return needs.length ? `아직 미답변: ${needs.join(", ")}` : "모든 핵심 질문이 채워졌어요!";
         }
 
@@ -387,7 +389,7 @@
         function makeSummary(name){
             const prof = store.profiles?.[name];
             if(!prof) return "해당 프로필이 없어요.";
-            const pairs = QUESTION_BANK.map(q=>{
+            const pairs = getAllQuestions().map(q=>{
                 const v = prof.facts?.[q.key];
                 return `· ${LABELS[q.key]||q.key}: ${v? v : "(미답변)"}`;
             });
@@ -398,7 +400,7 @@
         function compareProfiles(a,b, field=null){
             const A = store.profiles?.[a], B = store.profiles?.[b];
             if(!A || !B) return "비교할 프로필 이름을 확인해주세요.";
-            const keys = field? [field] : QUESTION_BANK.map(q=>q.key);
+            const keys = field? [field] : getAllQuestions().map(q=>q.key);
             const lines = keys.map(k=>{
                 const lab = LABELS[k]||k;
                 const va = A.facts?.[k] ?? "(미답변)";
@@ -449,8 +451,8 @@
                 if(/충족도|완료율/.test(t)){
                 const prof = store.profiles?.[name];
                 if(!prof) return "해당 프로필이 없어요.";
-                const total = QUESTION_BANK.length;
-                const answered = QUESTION_BANK.filter(q=> prof.facts?.[q.key]).length;
+                const total = getAllQuestions().length;
+                const answered = getAllQuestions().filter(q=> prof.facts?.[q.key]).length;
                 const pct = Math.round(answered/total*100);
                 return `[${name}] 충족도: ${pct}% (${answered}/${total})`;
                 }
@@ -501,24 +503,39 @@
             renderSummary();
         }
 
+        function addCustomQuestion({ key, label, p = 2, tags = ["사용자정의"] }) {
+            key = key.replace(/\s+/g, "_").toLowerCase();
+            // 중복 방지
+            if (getAllQuestions().some(q => q.key === key) || (store.schema.customQuestions||[]).some(q => q.key === key)) {
+                return false;
+            }
+            store.schema.customQuestions.push({ key, label, p, tags });
+            LABELS[key] = label;
+            return key;
+        }
+
+        function getAllQuestions(){
+            return [...QUESTION_BANK, ...(store.schema.customQuestions || [])];
+        }
+
         function allDone(){
-            return QUESTION_BANK.every(q => state.facts[q.key] !== undefined && state.facts[q.key] !== "");
+            return getAllQuestions().every(q => state.facts[q.key] !== undefined && state.facts[q.key] !== "");
         }
 
         function coverage(){
-            const total = QUESTION_BANK.length;
-            const answered = QUESTION_BANK.filter(q=> state.facts[q.key] !== undefined && state.facts[q.key] !== "").length;
+            const total = getAllQuestions().length;
+            const answered = getAllQuestions().filter(q=> state.facts[q.key] !== undefined && state.facts[q.key] !== "").length;
             return Math.round((answered/total)*100);
         }
         function nextQuestion(){
-        const unanswered = QUESTION_BANK.filter(q=> !state.facts[q.key]);
+        const unanswered = getAllQuestions().filter(q=> !state.facts[q.key]);
         if(unanswered.length===0) return null;
-        unanswered.sort((a,b)=> a.p===b.p ? QUESTION_BANK.indexOf(a)-QUESTION_BANK.indexOf(b) : a.p-b.p);
+        unanswered.sort((a,b)=> a.p===b.p ? getAllQuestions().indexOf(a)-getAllQuestions().indexOf(b) : a.p-b.p);
         return unanswered[0];
         }
 
         function renderNeeds(){
-            const needs = QUESTION_BANK.filter(q=> !state.facts[q.key]);
+            const needs = getAllQuestions().filter(q=> !state.facts[q.key]);
             const tagBox = el('needTags');
             tagBox.innerHTML = '';
             needs.slice(0,10).forEach(q=>{
@@ -547,7 +564,7 @@
                 s.textContent = '세션을 시작하면 요약이 표시됩니다.'; 
                 return; 
             }
-            const rows = QUESTION_BANK.map(q=>{
+            const rows = getAllQuestions().map(q=>{
                 const v = state.facts[q.key];
                 const value = (v===undefined||v==="")? '<span class="muted">(미답변)</span>' : escapeHtml(String(v));
                 const label = LABELS[q.key] || q.key; // 🔁 변경
@@ -637,6 +654,36 @@
             if(!text) return;
             el('msg').value='';
             addBubble('me', text);
+            
+            if (state.pendingTeach) {
+                const raw = text.trim();
+                if (raw === '취소') {
+                    state.pendingTeach = null;
+                    addBubble('ai', '학습을 취소했어요.');
+                    return;
+                }
+                if (!state.pendingTeach.key) {
+                    // 1단계: 필드명 받기
+                    const label = raw.replace(/[:：]+$/,'').trim();
+                    const key = label.replace(/\s+/g, "_").toLowerCase();
+                    const ok = addCustomQuestion({ key, label, p: 2 });
+                    if (!ok && ok !== key) {
+                    addBubble('ai', '이미 존재하는 이름이에요. 다른 이름을 입력해 주세요.');
+                    return;
+                    }
+                    state.pendingTeach.key = key;
+                    addBubble('ai', `좋아요! 앞으로 "${label}"을(를) 추적할게요. 지금 값은 어떻게 기록할까요?`);
+                    return;
+                } else {
+                    // 2단계: 값 받기 → 저장
+                    const key = state.pendingTeach.key;
+                    state.facts[key] = raw;
+                    addBubble('ai', `학습 완료! ${LABELS[key]}: ${raw}`);
+                    state.pendingTeach = null;
+                    saveCurrentToStore(); fsSaveIfConnected(); renderSummary(); askNext();
+                    return;
+                }
+            }
 
             // 1) 빠른 전환 명령은 즉시 처리
             if(text.startsWith('/use ')){
@@ -652,7 +699,7 @@
             }
 
             // 2) ★ 값 입력 우선 저장 (대기 중 질문이 있으면 우선적으로 그 키에 바인딩)
-            const pending = QUESTION_BANK.find(q => state.facts[q.key] === undefined || state.facts[q.key] === "");
+            const pending = getAllQuestions().find(q => state.facts[q.key] === undefined || state.facts[q.key] === "");
             let consumedAsValue = false;
 
             if(pending){
@@ -694,9 +741,19 @@
             }
 
             // 4) 값 저장이 없고 Q&A도 아니면 가설 제시(선택)
-            if(!consumedAsValue){
-                addBubble('ai', '좋은 포인트예요. 현재 데이터 기준으로 가설을 세워볼게요…');
-                addBubble('ai', hypothesize());
+            if (!consumedAsValue) {
+                // ① 학습 후보 찾기
+                const t = norm(text);
+                // 매우 단순: 문장 끝에 ? 있거나 '뭐야/알려줘' 포함 → 학습 유도
+                const looksTeach = /[?？]$/.test(text) || /(뭐야|알려줘|무엇|어떤|설명)/.test(t);
+                if (looksTeach) {
+                    // 사용자에게 필드명 붙이기 요청
+                    state.pendingTeach = { original: text }; // ★ 상태로 보관
+                    addBubble('ai', `이 질문을 저장해 배울까요? 새 필드 이름을 입력해 주세요 (예: '면 굵기').\n취소하려면 '취소'라고 입력하세요.`);
+                } else {
+                    addBubble('ai', '좋은 포인트예요. 현재 데이터 기준으로 가설을 세워볼게요…');
+                    addBubble('ai', hypothesize());
+                }
             }
 
             saveCurrentToStore();
