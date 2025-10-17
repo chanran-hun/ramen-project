@@ -367,10 +367,11 @@
         // ▼ 추가: 질문에서 어떤 필드를 묻는지 판별
         function detectField(text){
             const t = norm(text);
-            if(/물|물량|ml|물몇|물은몇/.test(t)) return "water_ml";
-            if(/삶|끓이|시간|분|초|보일|boil/.test(t)) return "boil_time";
-            if(/국물|맛|프로파일|맵|짠|감칠|기름/.test(t)) return "soup_profile";
-            if(/계란|달걀|에그|수란|반숙|토핑/.test(t)) return "egg_style";
+            const isQuestion = /[?？]$/.test(text) || /(몇|어떻게|알려줘|보여줘)/.test(t);
+            if(/물|물량|ml/.test(t) && isQuestion) return "water_ml";
+            if(/삶|끓이|시간|보일|boil/.test(t) && isQuestion) return "boil_time";
+            if(/국물|맛|프로파일|맵|짠|감칠|기름/.test(t) && isQuestion) return "soup_profile";
+            if(/계란|달걀|에그|수란|반숙|토핑/.test(t) && isQuestion) return "egg_style";
             return null;
         }
 
@@ -412,9 +413,10 @@
             const t = norm(text);
 
             // 1) 프로필 전환 의도: "열라면(으)로 전환/바꿔줘"
-            let m = t.match(/(.+?)(으)?로전환|(.+?)로바꿔줘/);
+            let m = t.match(/(?:(.+?)(?:으)?로전환|(.+?)로바꿔줘)/);
             if(m){
-                const cand = extractProfileNameFrom(text) || (m[1]||m[3]);
+                const candRaw = m[1] || m[2];
+                const cand = extractProfileNameFrom(candRaw || '') || candRaw;
                 if(cand && store.profiles[cand]){
                 saveCurrentToStore();
                 loadProfile(cand);
@@ -506,9 +508,9 @@
         }
 
         function coverage(){
-        const total = QUESTION_BANK.length;
-        const answered = QUESTION_BANK.filter(q=> state.facts[q.key] !== undefined && state.facts[q.key] !== "").length;
-        return Math.round((answered/total)*100);
+            const total = QUESTION_BANK.length;
+            const answered = QUESTION_BANK.filter(q=> state.facts[q.key] !== undefined && state.facts[q.key] !== "").length;
+            return Math.round((answered/total)*100);
         }
         function nextQuestion(){
         const unanswered = QUESTION_BANK.filter(q=> !state.facts[q.key]);
@@ -518,15 +520,16 @@
         }
 
         function renderNeeds(){
-        const needs = QUESTION_BANK.filter(q=> !state.facts[q.key]);
-        const tagBox = el('needTags');
-        tagBox.innerHTML = '';
-        needs.slice(0,10).forEach(q=>{
-            const t = document.createElement('span');
-            t.className='tag'; t.textContent = `요청: ${q.key}`;
-            tagBox.appendChild(t);
-        });
-        el('coverage').style.width = coverage()+"%";
+            const needs = QUESTION_BANK.filter(q=> !state.facts[q.key]);
+            const tagBox = el('needTags');
+            tagBox.innerHTML = '';
+            needs.slice(0,10).forEach(q=>{
+                const t = document.createElement('span');
+                t.className='tag'; 
+                t.textContent = `요청: ${(LABELS[q.key]||q.key)}`;
+                tagBox.appendChild(t);
+            });
+            el('coverage').style.width = coverage()+"%";
         }
 
         function renderPolicy(){
@@ -541,26 +544,33 @@
         }
 
         function renderSummary(){
-        const s = el('summary');
-        if(!state.ramenName){ s.textContent = '세션을 시작하면 요약이 표시됩니다.'; return; }
-        const rows = QUESTION_BANK.map(q=>{
-            const v = state.facts[q.key];
-            const value = (v===undefined||v==="")? '<span class="muted">(미답변)</span>' : escapeHtml(String(v));
-            return `<tr><td>${q.key}</td><td>${value}</td></tr>`;
-        }).join('');
-        s.innerHTML = `
+            const s = el('summary');
+            if(!state.ramenName){ 
+                s.textContent = '세션을 시작하면 요약이 표시됩니다.'; 
+                return; 
+            }
+            const rows = QUESTION_BANK.map(q=>{
+                const v = state.facts[q.key];
+                const value = (v===undefined||v==="")? '<span class="muted">(미답변)</span>' : escapeHtml(String(v));
+                return `<tr><td>${q.tags[0]}</td><td>${value}</td></tr>`;
+            }).join('');
+            s.innerHTML = `
             <div class="pill">활성 프로필 <b style="margin-left:6px">${escapeHtml(state.ramenName||'(없음)')}</b></div>
-            <div style="margin:.6rem 0">충족도: <b>${coverage()}%</b></div>`;
-        renderNeeds();
-        }
+            <div style="margin:.6rem 0">충족도: <b>${coverage()}%</b></div>
+            <table style="width:100%;border-collapse:collapse;border:1px solid #2a3347">
+                <tbody>${rows}</tbody>
+            </table>
+            `;
+            }
+
         function saveCurrentToStore(){
-            if(!store.active) return;
-            store.profiles[store.active] = {
-                facts: {...state.facts},
-                history: [...state.history],
-                updatedAt: Date.now(),
-                createdAt: store.profiles[store.active]?.createdAt || Date.now()
-            };
+                if(!store.active) return;
+                store.profiles[store.active] = {
+                    facts: {...state.facts},
+                    history: [...state.history],
+                    updatedAt: Date.now(),
+                    createdAt: store.profiles[store.active]?.createdAt || Date.now()
+                };
         }
 
         function loadProfile(name){
@@ -624,56 +634,76 @@
         }
 
         function handleUserMessage(){
-            const text = el('msg').value.trim(); 
+            const text = el('msg').value.trim();
             if(!text) return;
-
             el('msg').value='';
             addBubble('me', text);
 
-            // 빠른 전환: "/use 라면이름"
+            // 1) 빠른 전환 명령은 즉시 처리
             if(text.startsWith('/use ')){
                 const target = text.slice(5).trim();
                 if(target){
-                    saveCurrentToStore();
-                    loadProfile(target);
-                    addBubble('ai', `프로필을 [${target}]으로 전환했습니다.`);
-                    fsSaveIfConnected();
-                    if(!allDone()){
-                        askNext();
-                    }
-                    return;
+                saveCurrentToStore();
+                loadProfile(target);
+                addBubble('ai', `프로필을 [${target}]으로 전환했습니다.`);
+                fsSaveIfConnected();
+                if(!allDone()) askNext();
+                return;
                 }
             }
 
-            // ▼ 추가: 자연어 Q&A 먼저 시도
-            const maybeAnswer = answerQuestion(text);
-            if(maybeAnswer){
+            // 2) ★ 값 입력 우선 저장 (대기 중 질문이 있으면 우선적으로 그 키에 바인딩)
+            const pending = QUESTION_BANK.find(q => state.facts[q.key] === undefined || state.facts[q.key] === "");
+            let consumedAsValue = false;
+
+            if(pending){
+                // 간단한 값 파서: boil_time은 "4분 30초" → "4분 30초"(원문 유지) or 초단위로 표준화
+                let val = text;
+                if(pending.key === 'boil_time'){
+                // 선택) 표준화: "m분 s초", "m:s", "mm:ss" 등을 허용
+                const ms = text.match(/(\d+)\s*분(?:\s*(\d+)\s*초)?|^(\d+)\s*:\s*(\d+)$/);
+                if(ms){
+                    const m = parseInt(ms[1] ?? ms[3] ?? '0', 10);
+                    const s = parseInt(ms[2] ?? ms[4] ?? '0', 10);
+                    // 원문 보존을 선호하시면 아래 한 줄만 사용하세요.
+                    val = `${m}분 ${s? s+'초':''}`.trim();
+                    // 또는 초 단위 표준화 원하시면:
+                    // val = (m*60 + s) + "초";
+                }
+                }
+                // 아주 허술한 검증 예시(ml): 숫자 + 'ml' 허용
+                if(pending.key === 'water_ml'){
+                const m = text.replace(/\s+/g,'').match(/^(\d{2,4})\s*ml?$/i);
+                if(m) val = m[1] + 'ml';
+                }
+
+                state.facts[pending.key] = val;
+                consumedAsValue = true;
+            }
+
+            // 3) “?”가 있는 입력만 자연어 Q&A로 간주 (값 입력 오인 방지)
+            if(/[?？]$/.test(text)){
+                const maybeAnswer = answerQuestion(text);
+                if(maybeAnswer){
                 addBubble('ai', maybeAnswer);
                 saveCurrentToStore();
                 fsSaveIfConnected();
+                if(consumedAsValue) askNext();
                 return;
+                }
             }
 
-            const pending = QUESTION_BANK.find(q => !state.facts[q.key]);
-            let advanced = false;
-            if(pending){ 
-                state.facts[pending.key] = text; 
-                advanced = true;
-            }
-
-            if(/[?？]$/.test(text)){
-                addBubble('ai', '좋은 질문이에요. 우선 현재 데이터 기준으로 가설을 세워볼게요…');
-                const hypo = hypothesize();
-                addBubble('ai', hypo);
+            // 4) 값 저장이 없고 Q&A도 아니면 가설 제시(선택)
+            if(!consumedAsValue){
+                addBubble('ai', '좋은 포인트예요. 현재 데이터 기준으로 가설을 세워볼게요…');
+                addBubble('ai', hypothesize());
             }
 
             saveCurrentToStore();
             fsSaveIfConnected();
-            
-            if(advanced){
-                askNext();
-            }
+            if(consumedAsValue) askNext();
         }
+
 
         function hypothesize(){
         const w = state.facts.water_ml||'물량 미정';
@@ -682,9 +712,6 @@
         const sp = state.facts.soup_profile||'국물 성향 미정';
         const th = state.facts.spice_threshold||'임계 미정';
         let tips = [];
-        if(state.facts.resting===undefined) tips.push('완성 후 20~40초 숙성 테스트를 해보면 면수 흡수로 농도가 안정될 수 있어요.');
-        if(state.facts.aroma_oil===undefined) tips.push('향미유는 불 끈 뒤 그릇에 두르는 방식과 냄비에 바로 넣는 방식을 각각 시험해보세요.');
-        if(state.facts.egg_style===undefined) tips.push('계란은 수란/스크램블/반숙 토핑 3-way로 비교해보면 재미있어요.');
         const body = `현재 설정은 물 ${w}, 삶기 ${t}, 면 ${n}, 국물 ${sp}, 맵기 임계 ${th} 입니다.`
         return body + (tips.length? "추천 실험: " + tips.join(' ') : "핵심 세팅이 거의 채워졌어요!");
         }
@@ -761,7 +788,6 @@
                     store.active = data.active || Object.keys(store.profiles)[0] || null;
                     if(store.active){
                         loadProfile(store.active);
-                        addBubble('ai','세션 파일에서 자동 복구했어요.', {record:true});
                         askNext();  
                     }else{
                         renderPolicy(); renderSummary();
