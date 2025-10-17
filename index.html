@@ -341,8 +341,8 @@
         ];
 
         const POLICY_TAGS = [
-        ["필수","물량","시간","국물"],
-        ["중요","토핑"],
+            ["필수","물량","시간","국물"],
+            ["중요","토핑"],
         ];
 
         const LABELS = {
@@ -410,9 +410,27 @@
             return `프로필 비교: ${a} vs ${b}\n` + lines.join("\n");
         }
 
-        // ▼ 추가: 자연어로 Q&A 수행
+        function escapeRegExp(s){ 
+            return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+        }
+
+        function detectFieldSmart(text){
+        const base = detectField(text);        // 기존 단어 사전으로 1차 감지
+        if (base) return base;
+        const syns = store.synonyms || {};
+        for (const [field, words] of Object.entries(syns)) {
+            for (const w of words || []) {
+            const patt = new RegExp(escapeRegExp(w), 'i');  // 사용자 입력 패턴 안전 매칭
+            if (patt.test(text)) return field;
+            }
+        }
+        return null;
+        }
+
         function answerQuestion(text){
             const t = norm(text);
+            const detectedField = detectFieldSmart(text);
+            state.lastField = detectedField ?? state.lastField;
 
             // 1) 프로필 전환 의도: "열라면(으)로 전환/바꿔줘"
             let m = t.match(/(?:(.+?)(?:으)?로전환|(.+?)로바꿔줘)/);
@@ -460,7 +478,7 @@
             }
 
             // 5) 두 프로필 비교: "신라면과 열라면 비교", "… 물량 비교"
-            m = text.match(/(.+?)와 (.+?) (비교|차이|어떄|어때)/);
+            m = text.match(/(.+?)와 (.+?) (비교|차이|어때)/);
             if(m){
                 const a = extractProfileNameFrom(m[1]?.trim()) || m[1]?.trim();
                 const b = extractProfileNameFrom(m[2]?.trim()) || m[2]?.trim();
@@ -478,17 +496,15 @@
                 const val = prof.facts?.[field];
                 if(val===undefined || val==="") return `[${name}]의 ${LABELS[field]||field}는 아직 미답변이에요.`;
                 return `[${name}]의 ${LABELS[field]||field}: ${val}`;
+            } else {
+                return null;
             }
 
-            const fieldKeyForLearn = field;
-            store.synonyms[fieldKeyForLearn] = store.synonyms[fieldKeyForLearn] || [];
-            // 너무 긴 문장/민감 내용 제외: 여기선 6~30자 정도만 등록 예시
+            state.lastField = field;
+            store.synonyms[field] = store.synonyms[field] || [];
             const rawQ = text.trim();
             if (rawQ.length >= 6 && rawQ.length <= 60) {
-            // 중복 방지
-                if (!store.synonyms[fieldKeyForLearn].some(s => s === rawQ)) {
-                    store.synonyms[fieldKeyForLearn].push(rawQ);
-                }
+                store.synonyms[field].push(rawQ);
             }
             fsSaveIfConnected();
 
@@ -527,12 +543,11 @@
         function addCustomQuestion({ key, label, p = 2, tags = ["사용자정의"] }) {
             key = key.replace(/\s+/g, "_").toLowerCase();
             // 중복 방지
-            if (getAllQuestions().some(q => q.key === key) || (store.schema.customQuestions||[]).some(q => q.key === key)) {
-                return false;
-            }
+            if (getAllQuestions().some(q => q.key === key)) return null;
+            store.schema = store.schema || { customQuestions: [] };
             store.schema.customQuestions.push({ key, label, p, tags });
             LABELS[key] = label;
-            return key;
+            return key; // ← 항상 key(문자열) 또는 null
         }
 
         function getAllQuestions(){
@@ -588,8 +603,8 @@
             const rows = getAllQuestions().map(q=>{
                 const v = state.facts[q.key];
                 const value = (v===undefined||v==="")? '<span class="muted">(미답변)</span>' : escapeHtml(String(v));
-                const label = LABELS[q.key] || q.key; // 🔁 변경
-                return `<tr><td>${label}</td><td>${value}</td></tr>`;  // 🔁 변경
+                const label = escapeHtml(LABELS[q.key] || q.key);
+                return `<tr><td>${label}</td><td>${value}</td></tr>`;
             }).join('');
             s.innerHTML = `
             <div class="pill">활성 프로필 <b style="margin-left:6px">${escapeHtml(state.ramenName||'(없음)')}</b></div>
@@ -709,12 +724,12 @@
                     // 1단계: 필드명 받기
                     const label = raw.replace(/[:：]+$/,'').trim();
                     const key = label.replace(/\s+/g, "_").toLowerCase();
-                    const ok = addCustomQuestion({ key, label, p: 2 });
-                    if (!ok && ok !== key) {
-                    addBubble('ai', '이미 존재하는 이름이에요. 다른 이름을 입력해 주세요.');
-                    return;
+                    const createdKey = addCustomQuestion({ key, label, p: 2 });
+                    if (!createdKey) {
+                        addBubble('ai', '이미 존재하는 이름이에요. 다른 이름을 입력해 주세요.');
+                        return;
                     }
-                    state.pendingTeach.key = key;
+                    state.pendingTeach.key = createdKey;
                     addBubble('ai', `좋아요! 앞으로 "${label}"을(를) 추적할게요. 지금 값은 어떻게 기록할까요?`);
                     return;
                 } else {
@@ -746,28 +761,20 @@
             let consumedAsValue = false;
 
             if(pending){
-                // 간단한 값 파서: boil_time은 "4분 30초" → "4분 30초"(원문 유지) or 초단위로 표준화
                 let val = text;
                 if(pending.key === 'boil_time'){
-                // 선택) 표준화: "m분 s초", "m:s", "mm:ss" 등을 허용
-                const ms = text.match(/(\d+)\s*분(?:\s*(\d+)\s*초)?|^(\d+)\s*:\s*(\d+)$/);
-                if(ms){
-                    const m = parseInt(ms[1] ?? ms[3] ?? '0', 10);
-                    const s = parseInt(ms[2] ?? ms[4] ?? '0', 10);
-                    // 원문 보존을 선호하시면 아래 한 줄만 사용하세요.
-                    val = `${m}분 ${s? s+'초':''}`.trim();
-                    // 또는 초 단위 표준화 원하시면:
-                    // val = (m*60 + s) + "초";
+                    const ms = text.match(/(\d+)\s*분(?:\s*(\d+)\s*초)?|^(\d+)\s*:\s*(\d+)$/);
+                    if (ms) {
+                        const m = parseInt(ms[1] || ms[3] || "0");
+                        const s = parseInt(ms[2] || ms[4] || "0");
+                        val = `${m}분 ${s ? s + "초" : ""}`.trim();
+                    }
+                } else if(pending.key === "water_ml"){
+                    const compact = text.replace(/\s+/g, "");
+                    const m = compact.match(/^(\d{2,4})\s*ml?$/i);
+                    if (m) val = `${m[1]}ml`;
                 }
-                }
-                // 아주 허술한 검증 예시(ml): 숫자 + 'ml' 허용
-                if(pending.key === 'water_ml'){
-                const m = text.replace(/\s+/g,'').match(/^(\d{2,4})\s*ml?$/i);
-                if(m) val = m[1] + 'ml';
-                }
-
                 state.facts[pending.key] = val;
-                consumedAsValue = true;
             }
 
             // 3) “?”가 있는 입력만 자연어 Q&A로 간주 (값 입력 오인 방지)
@@ -802,22 +809,6 @@
             saveCurrentToStore();
             fsSaveIfConnected();
             if(consumedAsValue) askNext();
-        }
-
-        function detectFieldSmart(text){
-            const t = norm(text);
-            // 1) 기존 규칙
-            const base = detectField(text);
-            if (base) return base;
-
-            // 2) 학습된 시소러스
-            for (const [field, words] of Object.entries(store.synonyms || {})) {
-                for (const w of words) {
-                const patt = new RegExp(w, 'i');
-                if (patt.test(text)) return field;
-                }
-            }
-            return null;
         }
 
         function hypothesize(){
@@ -855,6 +846,9 @@
                     });
                     el('chat').scrollTop = el('chat').scrollHeight;
                     renderSummary();
+                    store.active = state.ramenName || '나의 라면';
+                    saveCurrentToStore();
+                    fsSaveIfConnected();
                     addBubble('ai','가져온 세션을 이어서 진행합니다.', {record:true});
                     fsSaveIfConnected();
                 }catch(err){ alert('JSON 형식이 올바르지 않습니다.'); }
@@ -879,7 +873,17 @@
         }catch(e){ /* 사용자가 취소한 경우 등 무시 */ }
         }
 
+        function ensureStoreScaffolding() {
+            store.version = store.version || 2;
+            store.profiles = store.profiles || {};
+            store.active = store.active || null;
+            store.schema = store.schema || { customQuestions: [] };
+            store.synonyms = store.synonyms || {};
+            store.stats = store.stats || {};
+        }
+
         async function fsSaveIfConnected(){
+            ensureStoreScaffolding();
         try{
             if(!sessionHandle) sessionHandle = await restoreHandle();
             if(!sessionHandle) return;
@@ -892,6 +896,7 @@
         }
 
         async function fsLoadIfConnected(){
+            ensureStoreScaffolding();
             try{
                 if(!sessionHandle) sessionHandle = await restoreHandle();
                 if(!sessionHandle) return false;

@@ -46,7 +46,7 @@
           "text": "수란"
         }
       ],
-      "updatedAt": 1760704286556,
+      "updatedAt": 1760715076750,
       "createdAt": 1760601734126
     }
   },
@@ -54,5 +54,6 @@
   "schema": {
     "customQuestions": []
   },
-  "synonyms": {}
+  "synonyms": {},
+  "stats": {}
 }
