@@ -44,27 +44,15 @@
         {
           "role": "me",
           "text": "수란"
-        },
-        {
-          "role": "me",
-          "text": "삼양라면으로 전환"
-        },
-        {
-          "role": "ai",
-          "text": "프로필을 [신라면]으로 전환했어요."
-        },
-        {
-          "role": "me",
-          "text": "물 몇ml지?"
-        },
-        {
-          "role": "ai",
-          "text": "[신라면]의 물량(ml): 550ml"
         }
       ],
-      "updatedAt": 1760692986615,
+      "updatedAt": 1760704286556,
       "createdAt": 1760601734126
     }
   },
-  "active": "신라면"
+  "active": "신라면",
+  "schema": {
+    "customQuestions": []
+  },
+  "synonyms": {}
 }

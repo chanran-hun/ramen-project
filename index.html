@@ -272,56 +272,56 @@
         <!-- 좌: 채팅/질문 -->
         <section class="panel">
             <div class="section">
-            <h2>대화</h2>
-            <p class="note">AI가 현재 지식의 빈칸을 발견하면 먼저 질문합니다. 답변은 자연어로 자유롭게 입력하세요.</p>
+                <h2>대화</h2>
+                <p class="note">AI가 현재 지식의 빈칸을 발견하면 먼저 질문합니다. 답변은 자연어로 자유롭게 입력하세요.</p>
             </div>
             <div id="chat" class="chat"></div>
             <div class="inputbar">
-            <textarea id="msg" placeholder="라면에 대해 궁금한것을 물어보세요"></textarea>
-            <button id="send">보내기</button>
+                <textarea id="msg" placeholder="라면에 대해 궁금한것을 물어보세요"></textarea>
+                <button id="send">보내기</button>
             </div>
             <div class="state">
-            <div>지식 충족도</div>
-            <div class="statbar" aria-label="coverage"><i id="coverage"></i></div>
-            <div class="tags" id="needTags"></div>
+                <div>지식 충족도</div>
+                <div class="statbar" aria-label="coverage"><i id="coverage"></i></div>
+                <div class="tags" id="needTags"></div>
             </div>
         </section>
 
         <!-- 우: 세팅/세션/요약 -->
         <section class="panel">
             <div class="section">
-            <h2>세션</h2>
-            <div class="row">
-                <span class="pill">라면 이름 <input id="ramenName"/></span>
-                <button id="start">세션 시작</button>
-                <button id="clear" class="ghost">초기화</button>
-            </div>
-            <p class="note">세션을 시작하면 AI가 우선순위 높은 질문부터 순서대로 던집니다.</p>
-            <div class="actions">
-                <button id="export">데이터 내보내기(JSON)</button>
-                <button id="import">데이터 가져오기(JSON)</button>
-                <input type="file" id="file" accept="application/json" hidden />
-                <button id="connectFile">세션 파일 연결</button>
-                <span class="note" style="font-size:12px">(Git 저장소 안의 <code>ramen_session.json</code>과 연결 권장)</span>
-            </div>
-            </div>
-            <div class="section">
-            <div id="summary" class="muted">세션을 시작하면 요약이 표시됩니다.</div>
+                <h2>세션</h2>
+                <div class="row">
+                    <span class="pill">라면 이름 <input id="ramenName"/></span>
+                    <button id="start">세션 시작</button>
+                    <button id="clear" class="ghost">초기화</button>
+                </div>
+                <p class="note">세션을 시작하면 AI가 우선순위 높은 질문부터 순서대로 던집니다.</p>
+                <div class="actions">
+                    <button id="export">데이터 내보내기(JSON)</button>
+                    <button id="import">데이터 가져오기(JSON)</button>
+                    <input type="file" id="file" accept="application/json" hidden />
+                    <button id="connectFile">세션 파일 연결</button>
+                    <span class="note" style="font-size:12px">(Git 저장소 안의 <code>ramen_session.json</code>과 연결 권장)</span>
+                </div>
             </div>
             <div class="section">
-            <div class="tags" id="policyTags"></div>
+                <div id="summary" class="muted">세션을 시작하면 요약이 표시됩니다.</div>
+            </div>
+                <div class="section">
+                <div class="tags" id="policyTags"></div>
             </div>
         </section>
         </div>
     </div>
 
     <script>
-        // --- 간단한 상태 ---
+        //상태 저장소
         const state = {
             ramenName: "",
-            facts: {}, // key -> value
-            history: [], // {role:"ai"|"user", text}
-            doneNotified: false,   // ✅ 추가: 완료 멘트 중복 방지
+            facts: {}, //라면 속성
+            history: [], //대화 내역
+            doneNotified: false, //완료 멘트 중복 방지
         };
 
         // ▼ 여러 라면을 담는 v2 저장소
@@ -464,12 +464,12 @@
             if(m){
                 const a = extractProfileNameFrom(m[1]?.trim()) || m[1]?.trim();
                 const b = extractProfileNameFrom(m[2]?.trim()) || m[2]?.trim();
-                const field = detectField(text); // 특정 항목 비교면 그 항목만
+                const field = detectFieldSmart(text);
                 return compareProfiles(a,b,field);
             }
 
             // 6) 특정 값 질의: "신라면 물 몇 ml야?", "물량 알려줘", "삶는 시간?"
-            const field = detectField(text);
+            const field = detectFieldSmart(text);
             if(field){
                 const name = extractProfileNameFrom(text) || store.active || state.ramenName;
                 if(!name) return "어느 프로필의 값을 볼지 알려주세요.";
@@ -478,10 +478,31 @@
                 const val = prof.facts?.[field];
                 if(val===undefined || val==="") return `[${name}]의 ${LABELS[field]||field}는 아직 미답변이에요.`;
                 return `[${name}]의 ${LABELS[field]||field}: ${val}`;
-        }
+            }
+
+            const fieldKeyForLearn = field;
+            store.synonyms[fieldKeyForLearn] = store.synonyms[fieldKeyForLearn] || [];
+            // 너무 긴 문장/민감 내용 제외: 여기선 6~30자 정도만 등록 예시
+            const rawQ = text.trim();
+            if (rawQ.length >= 6 && rawQ.length <= 60) {
+            // 중복 방지
+                if (!store.synonyms[fieldKeyForLearn].some(s => s === rawQ)) {
+                    store.synonyms[fieldKeyForLearn].push(rawQ);
+                }
+            }
+            fsSaveIfConnected();
+
+            store.stats = store.stats || {}; 
+            store.stats[field] = (store.stats[field] || 0) + 1;
+            // 누적이 5회 넘으면 p 승격 (커스텀 질문만)
+            const cq = (store.schema.customQuestions||[]).find(q => q.key === field);
+            if (cq && cq.p > 1 && store.stats[field] >= 5) {
+                cq.p = 1; // 승격
+                fsSaveIfConnected();
+            }
 
         // 매칭 실패 → null (호출 측에서 가설(hypothesize)로 폴백)
-        return null;
+            return null; 
         }
         // --- 유틸 ---
         const el = id => document.getElementById(id);
@@ -651,6 +672,28 @@
 
         function handleUserMessage(){
             const text = el('msg').value.trim();
+
+            if (/^(아니야|수정|정정)/.test(norm(text))) {
+            // 마지막 응답의 필드를 추적하려면, answerQuestion 응답 시 state.lastField = fieldKey 저장
+            const k = state.lastField;
+            if (!k) { 
+                addBubble('ai','어떤 항목을 수정할지 모르겠어요. "물량 수정 500ml"처럼 말해 주세요.'); 
+                return; 
+            }
+            const m = text.match(/([a-zA-Z가-힣_ ]+)\s*수정\s*(.+)$/);
+            if (m) {
+                const keyGuess = m[1].trim().replace(/\s+/g,"_").toLowerCase();
+                const value = m[2].trim();
+                const key = LABELS[keyGuess] ? keyGuess : k;
+                state.facts[key] = value;
+                addBubble('ai', `${LABELS[key]||key} 값을 "${value}"로 수정했어요.`);
+                saveCurrentToStore(); fsSaveIfConnected(); renderSummary();
+                return;
+            }
+            addBubble('ai','수정할 값을 알려주세요. 예: "삶는 시간 수정 4분 10초"');
+            return;
+            }
+
             if(!text) return;
             el('msg').value='';
             addBubble('me', text);
@@ -761,6 +804,21 @@
             if(consumedAsValue) askNext();
         }
 
+        function detectFieldSmart(text){
+            const t = norm(text);
+            // 1) 기존 규칙
+            const base = detectField(text);
+            if (base) return base;
+
+            // 2) 학습된 시소러스
+            for (const [field, words] of Object.entries(store.synonyms || {})) {
+                for (const w of words) {
+                const patt = new RegExp(w, 'i');
+                if (patt.test(text)) return field;
+                }
+            }
+            return null;
+        }
 
         function hypothesize(){
         const w = state.facts.water_ml||'물량 미정';
