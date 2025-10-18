@@ -427,6 +427,37 @@
         return null;
         }
 
+        function learnFieldUsage(field, rawQ){
+            if(!field) return;
+            state.lastField = field;                    // 최근 필드 추적
+            store.stats = store.stats || {};
+            store.stats[field] = (store.stats[field] || 0) + 1;
+
+            // 커스텀 질문 승격 로직 유지
+            const cq = (store.schema.customQuestions||[]).find(q => q.key === field);
+            if (cq && cq.p > 1 && store.stats[field] >= 5) {
+                cq.p = 1;
+            }
+
+            // 간단 동의어 학습(질문 길이 제한)
+            const raw = (rawQ||"").trim();
+            if (raw.length >= 6 && raw.length <= 60) {
+                store.synonyms[field] = store.synonyms[field] || [];
+                if (!store.synonyms[field].includes(raw)) {
+                store.synonyms[field].push(raw);
+                }
+            }
+        }
+
+        function respond(field, text, {save=true} = {}){
+            learnFieldUsage(field, state._lastUserText); // 마지막 사용자 입력을 학습에 사용
+            if(save){ 
+                saveCurrentToStore(); 
+                fsSaveIfConnected(); 
+            }
+            return text;
+        }
+
         function answerQuestion(text){
             const t = norm(text);
             const detectedField = detectFieldSmart(text);
@@ -458,8 +489,8 @@
             // 3) 요약/정리
             if(/요약|정리|프로필보여줘|세팅보여줘/.test(t)){
                 const name = extractProfileNameFrom(text) || store.active || state.ramenName;
-                if(!name) return "어느 프로필을 요약할지 알려주세요.";
-                return makeSummary(name);
+                if(!name) return respond(null, "어느 프로필을 요약할지 알려주세요.");
+                return respond(null, makeSummary(name));
             }
 
             // 4) 남은 질문
@@ -490,14 +521,12 @@
             const field = detectFieldSmart(text);
             if(field){
                 const name = extractProfileNameFrom(text) || store.active || state.ramenName;
-                if(!name) return "어느 프로필의 값을 볼지 알려주세요.";
+                if(!name) return respond(null, "어느 프로필의 값을 볼지 알려주세요.");
                 const prof = store.profiles?.[name];
-                if(!prof) return "해당 프로필이 없어요.";
+                if(!prof) return respond(null, "해당 프로필이 없어요.");
                 const val = prof.facts?.[field];
-                if(val===undefined || val==="") return `[${name}]의 ${LABELS[field]||field}는 아직 미답변이에요.`;
-                return `[${name}]의 ${LABELS[field]||field}: ${val}`;
-            } else {
-                return null;
+                if(val===undefined || val==="") return respond(field, `[${name}]의 ${LABELS[field]||field}는 아직 미답변이에요.`);
+                return respond(field, `[${name}]의 ${LABELS[field]||field}: ${val}`);
             }
 
             state.lastField = field;
@@ -689,24 +718,25 @@
             const text = el('msg').value.trim();
 
             if (/^(아니야|수정|정정)/.test(norm(text))) {
-            // 마지막 응답의 필드를 추적하려면, answerQuestion 응답 시 state.lastField = fieldKey 저장
-            const k = state.lastField;
-            if (!k) { 
-                addBubble('ai','어떤 항목을 수정할지 모르겠어요. "물량 수정 500ml"처럼 말해 주세요.'); 
-                return; 
-            }
-            const m = text.match(/([a-zA-Z가-힣_ ]+)\s*수정\s*(.+)$/);
-            if (m) {
-                const keyGuess = m[1].trim().replace(/\s+/g,"_").toLowerCase();
-                const value = m[2].trim();
-                const key = LABELS[keyGuess] ? keyGuess : k;
-                state.facts[key] = value;
-                addBubble('ai', `${LABELS[key]||key} 값을 "${value}"로 수정했어요.`);
-                saveCurrentToStore(); fsSaveIfConnected(); renderSummary();
+                // 마지막 응답의 필드를 추적하려면, answerQuestion 응답 시 state.lastField = fieldKey 저장
+                const k = state.lastField;
+                if (!k) { 
+                    addBubble('ai','어떤 항목을 수정할지 모르겠어요. "물량 수정 500ml"처럼 말해 주세요.'); 
+                    return; 
+                }
+                const m = text.match(/([a-zA-Z가-힣_ ]+)\s*수정\s*(.+)$/);
+                if (m) {
+                    const keyGuess = m[1].trim().replace(/\s+/g,"_").toLowerCase();
+                    const value = m[2].trim();
+                    const key = LABELS[keyGuess] ? keyGuess : k;
+                    state.facts[key] = value;
+                    addBubble('ai', `${LABELS[key]||key} 값을 "${value}"로 수정했어요.`);
+                    saveCurrentToStore(); fsSaveIfConnected(); renderSummary();
+                    return;
+                }
+                addBubble('ai','수정할 값을 알려주세요. 예: "삶는 시간 수정 4분 10초"');
+                state._lastUserText = text;
                 return;
-            }
-            addBubble('ai','수정할 값을 알려주세요. 예: "삶는 시간 수정 4분 10초"');
-            return;
             }
 
             if(!text) return;
@@ -765,9 +795,9 @@
                 if(pending.key === 'boil_time'){
                     const ms = text.match(/(\d+)\s*분(?:\s*(\d+)\s*초)?|^(\d+)\s*:\s*(\d+)$/);
                     if (ms) {
-                        const m = parseInt(ms[1] || ms[3] || "0");
-                        const s = parseInt(ms[2] || ms[4] || "0");
-                        val = `${m}분 ${s ? s + "초" : ""}`.trim();
+                    const m = parseInt(ms[1] || ms[3] || "0");
+                    const s = parseInt(ms[2] || ms[4] || "0");
+                    val = `${m}분 ${s ? s + "초" : ""}`.trim();
                     }
                 } else if(pending.key === "water_ml"){
                     const compact = text.replace(/\s+/g, "");
@@ -775,6 +805,9 @@
                     if (m) val = `${m[1]}ml`;
                 }
                 state.facts[pending.key] = val;
+                consumedAsValue = true;              // ✅ 추가
+                saveCurrentToStore(); fsSaveIfConnected(); 
+                renderSummary(); renderNeeds();       // ✅ 바로 갱신
             }
 
             // 3) “?”가 있는 입력만 자연어 Q&A로 간주 (값 입력 오인 방지)
