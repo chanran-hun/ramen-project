@@ -325,11 +325,16 @@
         };
 
         // ▼ 여러 라면을 담는 v2 저장소
-        const store = { version: 2, profiles: {}, active: null };
-        store.schema = store.schema || { customQuestions: [] }; 
-        store.synonyms = store.synonyms || {}; // { fieldKey: Set<string> }를 문자열 배열로 저장
+        const store = { 
+            version: 2, profiles: {}, active: null 
+        };
 
-        // File System Access API 핸들 (선택 사항)
+        store.schema = store.schema || { 
+            customQuestions: [] 
+        }; 
+
+        store.synonyms = store.synonyms || {};
+
         let sessionHandle = null; // 사용자 연결 시 실파일로 자동 저장/로드
 
         // 질문 설계: key, text, hint, priority (0 필수, 1 중요, 2 선택), tags
@@ -370,10 +375,10 @@
         function detectField(text){
             const t = norm(text);
             const isQuestion = /[?？]$/.test(text) || /(몇|어떻게|알려줘|보여줘)/.test(t);
-            if(/물|물량|ml/.test(t) && isQuestion) return "water_ml";
-            if(/삶|끓이|시간|보일|boil/.test(t) && isQuestion) return "boil_time";
-            if(/국물|맛|프로파일|맵|짠|감칠|기름/.test(t) && isQuestion) return "soup_profile";
-            if(/계란|달걀|에그|수란|반숙|토핑/.test(t) && isQuestion) return "egg_style";
+            if(/물|물량/.test(t) && isQuestion) return "water_ml";
+            if(/삶|끓|시간/.test(t) && isQuestion) return "boil_time";
+            if(/맛/.test(t) && isQuestion) return "soup_profile";
+            if(/계란|토핑/.test(t) && isQuestion) return "egg_style";
             return null;
         }
 
@@ -415,37 +420,27 @@
         }
 
         function detectFieldSmart(text){
-        const base = detectField(text);        // 기존 단어 사전으로 1차 감지
-        if (base) return base;
-        const syns = store.synonyms || {};
-        for (const [field, words] of Object.entries(syns)) {
-            for (const w of words || []) {
-            const patt = new RegExp(escapeRegExp(w), 'i');  // 사용자 입력 패턴 안전 매칭
-            if (patt.test(text)) return field;
+            const base = detectField(text);
+            if (base) return base;
+            const syns = store.synonyms || {};
+            for (const [field, words] of Object.entries(syns)) {
+                for (const w of words || []) {
+                    const patt = new RegExp(escapeRegExp(w), 'i');  // 사용자 입력 패턴 안전 매칭
+                    if (patt.test(text)) return field;
+                }
             }
-        }
-        return null;
+            return null;
         }
 
         function learnFieldUsage(field, rawQ){
             if(!field) return;
-            state.lastField = field;                    // 최근 필드 추적
+            state.lastField = field;
             store.stats = store.stats || {};
-            store.stats[field] = (store.stats[field] || 0) + 1;
+            store.stats[field] = Math.min((store.stats[field] || 0) + 1, 1e6); // 오버플로 방지
 
-            // 커스텀 질문 승격 로직 유지
-            const cq = (store.schema.customQuestions||[]).find(q => q.key === field);
-            if (cq && cq.p > 1 && store.stats[field] >= 5) {
-                cq.p = 1;
-            }
-
-            // 간단 동의어 학습(질문 길이 제한)
             const raw = (rawQ||"").trim();
             if (raw.length >= 6 && raw.length <= 60) {
-                store.synonyms[field] = store.synonyms[field] || [];
-                if (!store.synonyms[field].includes(raw)) {
-                store.synonyms[field].push(raw);
-                }
+                store.synonyms[field] = Array.from(new Set([ ...(store.synonyms[field]||[]), raw ])).slice(-50); // 최근 50개
             }
         }
 
@@ -461,64 +456,92 @@
         function answerQuestion(text){
             const t = norm(text);
             const detectedField = detectFieldSmart(text);
-            state.lastField = detectedField ?? state.lastField;
+            if (detectedField) state.lastField = detectedField;
 
-            // 1) 프로필 전환 의도: "열라면(으)로 전환/바꿔줘"
+            //목록체크
+            const listKW = ["프로필목록", "목록", "리스트", "무슨라면", "어떤라면", "프로필보여줘", "프로필알려줘"];
+            if (listKW.some(k => t.includes(k))) {
+                const names = Object.keys(store.profiles || {});
+                const active = store.active || state.ramenName || "";
+                fsSaveIfConnected?.();
+                if (!names.length) return respond(null, "아직 저장된 프로필이 없어요.");
+                const list = `프로필 목록: ${names.join(", ")}`;
+                return respond(null, active ? `${list}\n현재 활성: [${active}]` : list);
+            }
+
+            //프로필 전환
             let m = t.match(/(?:(.+?)(?:으)?로전환|(.+?)로바꿔줘)/);
+
             if(m){
                 const candRaw = m[1] || m[2];
                 const cand = extractProfileNameFrom(candRaw || '') || candRaw;
                 if(cand && store.profiles[cand]){
-                saveCurrentToStore();
-                loadProfile(cand);
-                fsSaveIfConnected();
-                return `프로필을 [${cand}]으로 전환했어요.`;
+                    saveCurrentToStore();
+                    loadProfile(cand);
+                    fsSaveIfConnected();
+                    return `프로필을 [${cand}]으로 전환했어요.`;
                 }
                 return "그 이름의 프로필을 찾지 못했어요. 기존 프로필 이름으로 다시 말씀해 주세요.";
             }
 
-            // 2) 프로필 목록/활성 프로필
-            if(/프로필목록|리스트|무슨라면|어떤라면/.test(t)){
-                const names = Object.keys(store.profiles||{});
-                return names.length? `프로필 목록: ${names.join(", ")}` : "아직 저장된 프로필이 없어요.";
-            }
-            if(/활성프로필|현재프로필|지금무엇/.test(t)){
-                return store.active? `현재 활성 프로필: [${store.active}]` : "활성 프로필이 설정되지 않았어요.";
-            }
-
-            // 3) 요약/정리
+            //요약/정리
             if(/요약|정리|프로필보여줘|세팅보여줘/.test(t)){
                 const name = extractProfileNameFrom(text) || store.active || state.ramenName;
                 if(!name) return respond(null, "어느 프로필을 요약할지 알려주세요.");
                 return respond(null, makeSummary(name));
             }
 
-            // 4) 남은 질문
-            if(/미답변|남은질문|뭐가아직|충족도|완료율/.test(t)){
+            //남은 질문
+            if (/미답변|남은질문|남은 질문|충족도|완료율|/.test(t)) {
                 const name = extractProfileNameFrom(text) || store.active || state.ramenName;
-                if(!name) return "어느 프로필 기준인지 알려주세요.";
-                if(/충족도|완료율/.test(t)){
+                if (!name) return respond(null, "어느 프로필 기준인지 알려주세요.");
+
                 const prof = store.profiles?.[name];
-                if(!prof) return "해당 프로필이 없어요.";
+                if (!prof) return respond(null, "해당 프로필이 없어요.");
+
                 const total = getAllQuestions().length;
-                const answered = getAllQuestions().filter(q=> prof.facts?.[q.key]).length;
-                const pct = Math.round(answered/total*100);
-                return `[${name}] 충족도: ${pct}% (${answered}/${total})`;
+                const answered = getAllQuestions().filter(q => prof.facts?.[q.key]).length;
+                const pct = Math.round((answered / total) * 100);
+
+                // 상태/UI 동기화: 질의한 프로필을 state에 적재해 태그/게이지가 맞게 보이도록
+                if (store.active !== name) {
+                    saveCurrentToStore();
+                    loadProfile(name); // state.facts/history를 해당 프로필로
                 }
-                return listNeedsFor(name);
+                renderNeeds();                // needTags 갱신
+                el('coverage').style.width = pct + "%"; // 게이지 갱신
+
+                // 충족도만 요청한 경우
+                if (/충족도|완료율|coverage|progress/.test(t)) {
+                    return respond(null, `[${name}] 충족도: ${pct}% (${answered}/${total})`);
+                }
+
+                // 남은 질문 목록/개수 반환
+                const needs = getAllQuestions()
+                    .filter(q => !prof.facts?.[q.key])
+                    .map(q => LABELS[q.key] || q.key);
+
+                const msg = needs.length
+                    ? `아직 미답변(${needs.length}/${total}): ${needs.join(", ")}`
+                    : "모든 핵심 질문이 채워졌어요!";
+
+                state.doneNotified = needs.length === 0; // 완료 안내 중복 방지 플래그 업데이트
+                return respond(null, msg);
             }
 
             // 5) 두 프로필 비교: "신라면과 열라면 비교", "… 물량 비교"
-            m = text.match(/(.+?)와 (.+?) (비교|차이|어때)/);
+            m = text.match(/(.+?)와\s+(.+?)\s*(?:비교|차이|어때|차이는?|비교해줘)/);
             if(m){
-                const a = extractProfileNameFrom(m[1]?.trim()) || m[1]?.trim();
-                const b = extractProfileNameFrom(m[2]?.trim()) || m[2]?.trim();
+                const aRaw = (m[1]||"").trim();
+                const bRaw = (m[2]||"").trim();
+                const a = extractProfileNameFrom(aRaw) || aRaw;
+                const b = extractProfileNameFrom(bRaw) || bRaw;
                 const field = detectFieldSmart(text);
-                return compareProfiles(a,b,field);
+                return respond(field, compareProfiles(a,b,field));
             }
 
-            // 6) 특정 값 질의: "신라면 물 몇 ml야?", "물량 알려줘", "삶는 시간?"
-            const field = detectFieldSmart(text);
+            // 6) 특정 값 질의
+            const field = detectField(text);
             if(field){
                 const name = extractProfileNameFrom(text) || store.active || state.ramenName;
                 if(!name) return respond(null, "어느 프로필의 값을 볼지 알려주세요.");
@@ -526,24 +549,7 @@
                 if(!prof) return respond(null, "해당 프로필이 없어요.");
                 const val = prof.facts?.[field];
                 if(val===undefined || val==="") return respond(field, `[${name}]의 ${LABELS[field]||field}는 아직 미답변이에요.`);
-                return respond(field, `[${name}]의 ${LABELS[field]||field}: ${val}`);
-            }
-
-            state.lastField = field;
-            store.synonyms[field] = store.synonyms[field] || [];
-            const rawQ = text.trim();
-            if (rawQ.length >= 6 && rawQ.length <= 60) {
-                store.synonyms[field].push(rawQ);
-            }
-            fsSaveIfConnected();
-
-            store.stats = store.stats || {}; 
-            store.stats[field] = (store.stats[field] || 0) + 1;
-            // 누적이 5회 넘으면 p 승격 (커스텀 질문만)
-            const cq = (store.schema.customQuestions||[]).find(q => q.key === field);
-            if (cq && cq.p > 1 && store.stats[field] >= 5) {
-                cq.p = 1; // 승격
-                fsSaveIfConnected();
+                return respond(field, val ? `[${name}]의 ${LABELS[field]||field}: ${val}`: `[${name}]의 ${LABELS[field]||field}는 아직 미답변이에요.`);
             }
 
         // 매칭 실패 → null (호출 측에서 가설(hypothesize)로 폴백)
@@ -592,11 +598,13 @@
             const answered = getAllQuestions().filter(q=> state.facts[q.key] !== undefined && state.facts[q.key] !== "").length;
             return Math.round((answered/total)*100);
         }
+
         function nextQuestion(){
-        const unanswered = getAllQuestions().filter(q=> !state.facts[q.key]);
-        if(unanswered.length===0) return null;
-        unanswered.sort((a,b)=> a.p===b.p ? getAllQuestions().indexOf(a)-getAllQuestions().indexOf(b) : a.p-b.p);
-        return unanswered[0];
+            const all = getAllQuestions();
+            const unanswered = all.filter(q=> !state.facts[q.key]);
+            if(!unanswered.length) return null;
+            unanswered.sort((a,b)=> a.p===b.p ? all.indexOf(a)-all.indexOf(b) : a.p-b.p);
+            return unanswered[0];
         }
 
         function renderNeeds(){
@@ -714,34 +722,35 @@
             renderNeeds();
         }
 
+        function labelToKey(label){
+            const normed = label.replace(/\s+|\(.*?\)/g,"").toLowerCase();
+            let best = null, bestLen = 0;
+            for (const [k,v] of Object.entries(LABELS)){
+                const vv = String(v||"").replace(/\s+|\(.*?\)/g,"").toLowerCase();
+                if (vv === normed) return k;                 // 완전일치 우선
+                if (vv.length >= 2 && normed.includes(vv) && vv.length > bestLen){
+                best = k; bestLen = vv.length;             // 가장 긴 부분일치
+                }
+            }
+            return best;
+        }
+
         function handleUserMessage(){
             const text = el('msg').value.trim();
-
-            if (/^(아니야|수정|정정)/.test(norm(text))) {
-                // 마지막 응답의 필드를 추적하려면, answerQuestion 응답 시 state.lastField = fieldKey 저장
-                const k = state.lastField;
-                if (!k) { 
-                    addBubble('ai','어떤 항목을 수정할지 모르겠어요. "물량 수정 500ml"처럼 말해 주세요.'); 
-                    return; 
-                }
-                const m = text.match(/([a-zA-Z가-힣_ ]+)\s*수정\s*(.+)$/);
-                if (m) {
-                    const keyGuess = m[1].trim().replace(/\s+/g,"_").toLowerCase();
-                    const value = m[2].trim();
-                    const key = LABELS[keyGuess] ? keyGuess : k;
-                    state.facts[key] = value;
-                    addBubble('ai', `${LABELS[key]||key} 값을 "${value}"로 수정했어요.`);
-                    saveCurrentToStore(); fsSaveIfConnected(); renderSummary();
-                    return;
-                }
-                addBubble('ai','수정할 값을 알려주세요. 예: "삶는 시간 수정 4분 10초"');
-                state._lastUserText = text;
-                return;
-            }
-
-            if(!text) return;
             el('msg').value='';
             addBubble('me', text);
+
+            // 0) 먼저 질문/명령 인텐트인지 판별 → 맞으면 answerQuestion를 우선 처리
+            const intentLike = /[?？]$/.test(text) || /(남은질문|미답변|충족도|완료율|뭐가아직|요약|프로필목록|활성프로필|전환|바꿔줘|비교|차이)/.test(norm(text));
+            if (intentLike) {
+                const maybe = answerQuestion(text);
+                if (maybe) {
+                    addBubble('ai', maybe);
+                    saveCurrentToStore(); 
+                    fsSaveIfConnected();
+                    return; // ✅ 값 저장 로직으로 내려가지 않음
+                }
+            }
             
             if (state.pendingTeach) {
                 const raw = text.trim();
@@ -865,26 +874,67 @@
 
         function importJSON(file){
             const r = new FileReader();
-            r.onload = e=>{
-                try{
-                    const data = JSON.parse(e.target.result);
-                    if(!data || typeof data !== 'object') throw new Error('형식 오류');
-                    Object.assign(state, {ramenName:data.ramenName||'나의 라면', facts:data.facts||{}, history:data.history||[]});
-                    el('chat').innerHTML='';
-                    state.history.forEach(m=>{
-                        const b = document.createElement('div');
-                        b.className = `bubble ${m.role==='ai'?'ai':'me'}`;
-                        b.innerText = m.text;
-                        el('chat').appendChild(b);
-                    });
-                    el('chat').scrollTop = el('chat').scrollHeight;
-                    renderSummary();
-                    store.active = state.ramenName || '나의 라면';
-                    saveCurrentToStore();
-                    fsSaveIfConnected();
-                    addBubble('ai','가져온 세션을 이어서 진행합니다.', {record:true});
-                    fsSaveIfConnected();
-                }catch(err){ alert('JSON 형식이 올바르지 않습니다.'); }
+            r.onload = e => {
+                try {
+                // ★ 파싱 & 1차 검증
+                const raw = JSON.parse(e.target.result);
+                if (!raw || typeof raw !== 'object') throw new Error('형식 오류');
+
+                // ★ 화이트리스트 역직렬화 (유효 타입만 반영)
+                const ramenName =
+                    typeof raw.ramenName === 'string' && raw.ramenName.trim()
+                    ? raw.ramenName.trim()
+                    : '나의 라면';
+
+                const facts =
+                    raw.facts && typeof raw.facts === 'object' ? raw.facts : {};
+
+                // ★ history: 배열 + role/text 유효성 + 최소 필터링
+                const history = Array.isArray(raw.history)
+                    ? raw.history
+                        .filter(m =>
+                        m &&
+                        (m.role === 'ai' || m.role === 'me') &&
+                        typeof m.text === 'string'
+                        )
+                        .map(m => ({
+                        role: m.role,
+                        // textContent로 그릴 거라 XSS 걱정은 적지만, 그래도 trim
+                        text: m.text.trim()
+                        }))
+                        // (선택) 지나치게 긴 로그 방지용 슬라이싱
+                        .slice(-500)
+                    : [];
+
+                // ★ state에 검증된 값만 반영
+                state.ramenName = ramenName;
+                state.facts = facts;
+                state.history = history;
+
+                // ★ 채팅창 초기화 & 안전하게 다시 렌더 (textContent 사용)
+                const chat = el('chat');
+                chat.innerHTML = '';
+                for (const m of state.history) {
+                    const b = document.createElement('div');
+                    b.className = `bubble ${m.role === 'ai' ? 'ai' : 'me'}`;
+                    b.textContent = m.text; // ★ innerHTML 대신 textContent
+                    chat.appendChild(b);
+                }
+                chat.scrollTop = chat.scrollHeight;
+
+                // 요약/상태 갱신
+                if (typeof renderSummary === 'function') renderSummary();
+
+                store.active = state.ramenName || '나의 라면';
+                saveCurrentToStore();
+                fsSaveIfConnected();
+
+                // 안내 멘트
+                addBubble('ai', '가져온 세션을 이어서 진행합니다.', { record: true });
+                fsSaveIfConnected();
+                } catch (err) {
+                alert('JSON 형식이 올바르지 않습니다.');
+                }
             };
             r.readAsText(file);
         }
@@ -1006,11 +1056,28 @@
         el('file').addEventListener('change', e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; });
         el('connectFile').onclick = pickSessionFile;
 
-        // 자동 저장(2초마다) - localStorage (보조 백업)
+        let _dirty = false;
+
+        // 상태가 변할 때 dirty 표시
+        const markDirty = () => { _dirty = true; };
+
+        // chat창의 DOM 변경을 감시 → 채팅 추가 시 dirty 플래그 활성화
+        new MutationObserver(markDirty).observe(el('chat'), {
+            childList: true,
+            subtree: true
+        });
+
         try{
-        setInterval(()=>{
-            localStorage.setItem('ramen_session_v1', JSON.stringify(state));
-        }, 2000);
+            setInterval(() => {
+                if (_dirty) {
+                    try {
+                    localStorage.setItem('ramen_session_v1', JSON.stringify(state));
+                    } catch (err) {
+                    console.warn('자동 저장 실패:', err);
+                    }
+                    _dirty = false;
+                }
+            }, 2000);
         }catch(_){ }
 
         // 페이지 로드시: 1) 파일 자동 복구 시도 -> 2) 없으면 localStorage 복구
