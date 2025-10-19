@@ -459,7 +459,7 @@
             if (detectedField) state.lastField = detectedField;
 
             //목록체크
-            const listKW = ["프로필목록", "목록", "리스트", "무슨라면", "어떤라면", "프로필보여줘", "프로필알려줘"];
+            const listKW = ["목록", "리스트", "무슨라면", "어떤라면"];
             if (listKW.some(k => t.includes(k))) {
                 const names = Object.keys(store.profiles || {});
                 const active = store.active || state.ramenName || "";
@@ -740,15 +740,22 @@
             el('msg').value='';
             addBubble('me', text);
 
+            const tnorm = norm(text);
+            const LIST_TOKENS = ["목록","리스트","무슨라면","어떤라면"];
+
             // 0) 먼저 질문/명령 인텐트인지 판별 → 맞으면 answerQuestion를 우선 처리
-            const intentLike = /[?？]$/.test(text) || /(남은질문|미답변|충족도|완료율|뭐가아직|요약|프로필목록|활성프로필|전환|바꿔줘|비교|차이)/.test(norm(text));
+            const intentLike = 
+                /[?？]$/.test(text) || 
+                /(남은질문|미답변|충족도|완료율|뭐가아직|요약|프로필목록|활성프로필|전환|바꿔줘|비교|차이)/.test(tnorm) ||
+                LIST_TOKENS.some(k => tnorm.includes(k));
+
             if (intentLike) {
                 const maybe = answerQuestion(text);
                 if (maybe) {
                     addBubble('ai', maybe);
                     saveCurrentToStore(); 
                     fsSaveIfConnected();
-                    return; // ✅ 값 저장 로직으로 내려가지 않음
+                    return; 
                 }
             }
             
@@ -820,15 +827,19 @@
             }
 
             // 3) “?”가 있는 입력만 자연어 Q&A로 간주 (값 입력 오인 방지)
-            const looksQuestion = /[?？]$/.test(text) || /(몇|어떻게|알려줘|보여줘|비교|차이|요약|전환|바꿔줘)/.test(norm(text));
+            const looksQuestion = 
+                /[?？]$/.test(text) || 
+                /(몇|어떻게|알려줘|보여줘|비교|차이|요약|전환|바꿔줘)/.test(tnorm) ||
+                LIST_TOKENS.some(k => tnorm.includes(k));
+
             if(looksQuestion){
                 const maybeAnswer = answerQuestion(text);
                 if(maybeAnswer){
-                addBubble('ai', maybeAnswer);
-                saveCurrentToStore();
-                fsSaveIfConnected();
-                if(consumedAsValue) askNext();
-                return;
+                    addBubble('ai', maybeAnswer);
+                    saveCurrentToStore();
+                    fsSaveIfConnected();
+                    if(consumedAsValue) askNext();
+                    return;
                 }
             }
 
