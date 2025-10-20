@@ -1,1122 +1,422 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>라면 소생자 · 질문하는 AI (MVP)</title>
-    <style>
-        :root{
-            --bg: #0b0d12; 
-            --panel: #121621; 
-            --panel-2: #1a2030; 
-            --text: #e9edf5; 
-            --muted: #a9b4c7;
-            --acc: #7cc7ff; 
-            --acc-2: #ffd37c; 
-            --danger: #ff8a7c; 
-            --ok: #8dff7c;
-            --radius: 18px; 
-            --shadow: 0 10px 30px rgba(0,0,0,.35);
-        }
-        *{
-            box-sizing: border-box
-        }
-        
-        html,body{
-            height: 100%
-        }
-
-        body{
-            margin: 0;
-            background: radial-gradient(1200px 800px at 80% -10%,#17203a33,transparent),var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Pretendard,sans-serif;
-            color: var(--text);
-        }
-
-        .wrap{
-            max-width: 980px;
-            margin: 40px auto;
-            padding: 0 16px
-        }
-
-        header{
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            margin-bottom: 16px
-        }
-
-        header .logo{
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            background: linear-gradient(135deg,var(--acc),var(--acc-2));
-            display: grid;
-            place-items: center;
-            color: #0b0d12;
-            font-weight: 900;
-            box-shadow: var(--shadow)
-        }
-
-        header h1{
-            font-size: clamp(20px,3.8vw,32px);
-            margin: 0
-        }
-
-        header p{
-            margin: 0;
-            color: var(--muted)
-        }
-
-        .panel{
-            background: linear-gradient(180deg,var(--panel),var(--panel-2));
-            border: 1px solid #222a3a;
-            border-radius: var(--radius);
-            box-shadow: var(--shadow)
-        }
-
-        .grid{
-            display: grid;
-            grid-template-columns: 1.1fr .9fr;
-            gap: 16px
-        }
-
-        @media (max-width: 860px){
-            .grid{
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .section{
-            padding: 18px
-        }
-
-        .section h2{
-            margin: 0 0 10px;
-            font-size: 18px
-        }
-
-        .section p.note{
-            margin: .4rem 0 1rem;
-            color: var(--muted);
-            font-size: 14px
-        }
-
-        .row{
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            margin: 8px 0
-        }
-
-        .row input, .row select{
-            flex: 1;
-            background: #0f1421;
-            border: 1px solid #2a3347;
-            color: var(--text);
-            border-radius: 12px;
-            padding: 10px 12px
-        }
-
-        .row button{
-            background: #1e2a42;
-            border: 1px solid #2d3a58;
-            color: var(--text);
-            border-radius: 12px;
-            padding: 10px 14px;
-            cursor: pointer
-        }
-
-        .row button:hover{
-            filter: brightness(1.1)
-        }
-
-        .chat{
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            padding: 16px;
-            height: 460px;
-            overflow: auto;
-            border-top-left-radius: var(--radius);
-            border-top-right-radius: var(--radius)
-        }
-
-        .bubble{
-            max-width: 82%;
-            padding: 12px 14px;
-            border-radius: 14px;
-            line-height: 1.4
-        }
-
-        .ai{
-            align-self: flex-start;
-            background: #12213a;
-            border: 1px solid #2b3c5a
-        }
-
-        .me{
-            align-self: flex-end;
-            background: #1d2a2f;
-            border: 1px solid #2a3e3a
-        }
-
-        .inputbar{
-            display: flex;
-            gap: 10px;
-            padding: 12px;
-            border-top: 1px solid #26304a;
-            background: #0e1422;
-            border-bottom-left-radius: var(--radius);
-            border-bottom-right-radius: var(--radius)
-        }
-
-        .inputbar textarea{
-            flex: 1;
-            background: #0f1421;
-            border: 1px solid #2a3347;
-            color: var(--text);
-            border-radius: 12px;
-            padding: 12px;
-            height: 56px;
-            resize: none
-        }
-
-        .inputbar button{
-            background: linear-gradient(135deg,var(--acc),#9fe6ff);
-            color: #0b0d12;
-            border: none;
-            font-weight: 700;
-            border-radius: 12px;
-            padding: 0 18px;
-            cursor: pointer
-        }
-
-        .state{
-            padding: 12px;
-            border-top: 1px dashed #2a3347;
-            font-size: 14px;
-            color: var(--muted)
-        }
-
-        .tags{
-            display: flex; 
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 8px
-        }
-
-        .tag{
-            font-size: 12px;
-            padding: 6px 8px;
-            border-radius: 999px;
-            background: #111928;
-            border: 1px solid #26304a;
-            color: #c8d6f0
-        }
-
-        .statbar{
-            height: 8px;
-            background: #0e1422;
-            border: 1px solid #2b3550;
-            border-radius: 999px;
-            overflow: hidden
-        }
-        
-        .statbar > i{
-            display: block;
-            height: 100%;
-            width: 0;
-            background: linear-gradient(90deg,#4fd1ff,#b2f09b)
-        }
-
-        .pill{
-            display:inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 12px;
-            border: 1px solid #2c3750;
-            border-radius: 12px;
-            background: #0e1422
-        }
-
-        .pill input{
-            width:140px
-        }
-
-        .ghost{
-            opacity: .8
-        }
-
-        .muted{
-            color: var(--muted)
-        }
-
-        .actions{
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>라면 조리 도우미</title>
+  <style>
+    :root {
+      --bg:#0b0c10; --card:#111318; --muted:#868e96; --fg:#e9ecef; --accent:#7cfc00;
+      --border:#262a33; --chip:#1b1e26;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; background:linear-gradient(180deg,#0b0c10 0%, #0d1117 100%); color:var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      line-height:1.55;
+    }
+    header {
+      position: sticky; top:0; backdrop-filter: blur(8px);
+      background: rgba(13,17,23,0.6); border-bottom:1px solid var(--border);
+      padding:12px 16px; z-index:10;
+      display:flex; align-items:center; gap:12px;
+    }
+    header h1 { font-size:16px; margin:0; font-weight:700; letter-spacing: .3px; }
+    header .hint { color:var(--muted); font-size:12px; }
+    main { max-width:980px; margin: 20px auto; padding: 0 16px 80px; }
+    .row { display:flex; gap:16px; align-items:stretch; }
+    .col { flex:1; }
+    .card {
+      background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px;
+      box-shadow: 0 12px 24px rgba(0,0,0,.25);
+    }
+    .card h2 { margin:0 0 8px; font-size:14px; letter-spacing:.3px; color:#cbd3da }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .chip {
+      background:var(--chip); border:1px solid var(--border); padding:6px 10px; border-radius:999px;
+      font-size:12px; color:#cbd3da; cursor:pointer;
+    }
+    .chip:hover { border-color:#2f3540 }
+    .profiles-list { display:flex; gap:8px; flex-wrap:wrap; }
+    .profile-item {
+      background:var(--chip); border:1px solid var(--border); padding:8px 10px; border-radius:10px; cursor:pointer;
+    }
+    .profile-item.active { outline:2px solid var(--accent); }
+    .facts { display:grid; grid-template-columns: 1fr 1fr; gap:8px 12px; margin-top:8px; }
+    .facts .k { color:#9aa4ae; font-size:12px }
+    .facts .v { font-weight:600; }
+    .bubbles { display:flex; flex-direction:column; gap:8px; }
+    .bubble {
+      max-width:80%; padding:10px 12px; border-radius:14px; border:1px solid var(--border);
+      background:#0f1420; animation: slide .15s ease-out;
+      white-space: pre-wrap;
+    }
+    .bubble.me { margin-left:auto; background:#152035; }
+    .bubble.ai { margin-right:auto; }
+    @keyframes slide { from { transform: translateY(6px); opacity:.0 } to { transform: none; opacity:1 } }
+    .composer { position:fixed; left:0; right:0; bottom:0; padding:12px 16px; background:rgba(13,17,23,.75); border-top:1px solid var(--border); backdrop-filter: blur(10px); }
+    .composer form { max-width:980px; margin:0 auto; display:flex; gap:8px; }
+    input[type="text"] {
+      flex:1; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:#0f1420; color:var(--fg);
+    }
+    button {
+      padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:#172034; color:var(--fg); cursor:pointer;
+    }
+    button.primary { background:#1b2a4b; border-color:#28406f; }
+    .muted { color:var(--muted); font-size:12px; }
+    .mt8 { margin-top:8px } .mt12{ margin-top:12px } .mt16{ margin-top:16px }
+    .hidden { display:none !important; }
+  </style>
 </head>
 <body>
-    <div class="wrap">
-        <header>
-        <div class="logo">🍜</div>
-        <div>
-            <h1>라면 소생자 · 질문하는 AI</h1>
-            <p>“AI가 스스로 모르는 것을 묻고 배워 라면을 재탄생시키는” 질문 중심 MVP</p>
-        </div>
-        </header>
-
-        <div class="grid">
-        <!-- 좌: 채팅/질문 -->
-        <section class="panel">
-            <div class="section">
-                <h2>대화</h2>
-                <p class="note">AI가 현재 지식의 빈칸을 발견하면 먼저 질문합니다. 답변은 자연어로 자유롭게 입력하세요.</p>
-            </div>
-            <div id="chat" class="chat"></div>
-            <div class="inputbar">
-                <textarea id="msg" placeholder="라면에 대해 궁금한것을 물어보세요"></textarea>
-                <button id="send">보내기</button>
-            </div>
-            <div class="state">
-                <div>지식 충족도</div>
-                <div class="statbar" aria-label="coverage"><i id="coverage"></i></div>
-                <div class="tags" id="needTags"></div>
-            </div>
-        </section>
-
-        <!-- 우: 세팅/세션/요약 -->
-        <section class="panel">
-            <div class="section">
-                <h2>세션</h2>
-                <div class="row">
-                    <span class="pill">라면 이름 <input id="ramenName"/></span>
-                    <button id="start">세션 시작</button>
-                    <button id="clear" class="ghost">초기화</button>
-                </div>
-                <p class="note">세션을 시작하면 AI가 우선순위 높은 질문부터 순서대로 던집니다.</p>
-                <div class="actions">
-                    <button id="export">데이터 내보내기(JSON)</button>
-                    <button id="import">데이터 가져오기(JSON)</button>
-                    <input type="file" id="file" accept="application/json" hidden />
-                    <button id="connectFile">세션 파일 연결</button>
-                    <span class="note" style="font-size:12px">(Git 저장소 안의 <code>ramen_session.json</code>과 연결 권장)</span>
-                </div>
-            </div>
-            <div class="section">
-                <div id="summary" class="muted">세션을 시작하면 요약이 표시됩니다.</div>
-            </div>
-                <div class="section">
-                <div class="tags" id="policyTags"></div>
-            </div>
-        </section>
-        </div>
+  <header>
+    <h1>라면 조리 도우미</h1>
+    <div class="hint">키워드: "프로필 목록", "요약", "남은 질문", "○○로 전환", "국물 성향"</div>
+    <div style="margin-left:auto; display:flex; gap:8px;">
+      <button id="btnLoad">세션 불러오기</button>
+      <button id="btnSave">세션 저장</button>
     </div>
-
-    <script>
-        //상태 저장소
-        const state = {
-            ramenName: "",
-            facts: {}, //라면 속성
-            history: [], //대화 내역
-            doneNotified: false, //완료 멘트 중복 방지
-        };
-
-        // ▼ 여러 라면을 담는 v2 저장소
-        const store = { 
-            version: 2, profiles: {}, active: null 
-        };
-
-        store.schema = store.schema || { 
-            customQuestions: [] 
-        }; 
-
-        store.synonyms = store.synonyms || {};
-
-        let sessionHandle = null; // 사용자 연결 시 실파일로 자동 저장/로드
-
-        // 질문 설계: key, text, hint, priority (0 필수, 1 중요, 2 선택), tags
-        const QUESTION_BANK = [
-            {key:"water_ml", text:"물은 몇 mL가 가장 맛있나요?", p:0, tags:["물량","농도"]},
-            {key:"boil_time", text:"면을 몇 분 몇 초 삶을 때 최적 식감인가요?", p:0, tags:["시간","식감"]},
-            {key:"soup_profile", text:"국물의 기본 성향은?", p:0, tags:["국물","프로파일"]},
-            {key:"egg_style", text:"계란은 어떻게 쓰시나요?", p:1, tags:["토핑","단백질"]},
-        ];
-
-        const POLICY_TAGS = [
-            ["필수","물량","시간","국물"],
-            ["중요","토핑"],
-        ];
-
-        const LABELS = {
-            water_ml: "물량(ml)",
-            boil_time: "삶는 시간",
-            soup_profile: "국물 성향",
-            egg_style: "계란 스타일",
-        };  
-
-        const norm = s => (s||"").toLowerCase().replace(/\s+/g,"");
-
-       // ▼ 추가: 프로필 이름 추출 (문장 속에서 기존 프로필명 찾아내기)
-        function extractProfileNameFrom(text){
-            const t = text.replace(/\s+/g,"");
-            const names = Object.keys(store.profiles||{});
-            let hit = null;
-            for(const name of names){
-                if(!name) continue;
-                if(t.includes(name.replace(/\s+/g,""))) { hit = name; break; }
-            }
-            return hit;
-        }
-
-        // ▼ 추가: 질문에서 어떤 필드를 묻는지 판별
-        function detectField(text){
-            const t = norm(text);
-            const isQuestion = /[?？]$/.test(text) || /(몇|어떻게|알려줘|보여줘)/.test(t);
-            if(/물|물량/.test(t) && isQuestion) return "water_ml";
-            if(/삶|끓|시간/.test(t) && isQuestion) return "boil_time";
-            if(/맛/.test(t) && isQuestion) return "soup_profile";
-            if(/계란|토핑/.test(t) && isQuestion) return "egg_style";
-            return null;
-        }
-
-        // ▼ 추가: 남은 질문 나열
-        function listNeedsFor(name){
-            const prof = store.profiles?.[name];
-            if(!prof) return "해당 프로필이 없어요.";
-            const needs = getAllQuestions().filter(q=>!prof.facts?.[q.key]).map(q=>LABELS[q.key]||q.key);
-            return needs.length ? `아직 미답변: ${needs.join(", ")}` : "모든 핵심 질문이 채워졌어요!";
-        }
-
-        // ▼ 추가: 요약 문자열 생성
-        function makeSummary(name){
-            const prof = store.profiles?.[name];
-            if(!prof) return "해당 프로필이 없어요.";
-            const pairs = getAllQuestions().map(q=>{
-                const v = prof.facts?.[q.key];
-                return `· ${LABELS[q.key]||q.key}: ${v? v : "(미답변)"}`;
-            });
-            return `[${name}] 요약\n` + pairs.join("\n");
-        }
-
-        // ▼ 추가: 두 프로필 비교
-        function compareProfiles(a,b, field=null){
-            const A = store.profiles?.[a], B = store.profiles?.[b];
-            if(!A || !B) return "비교할 프로필 이름을 확인해주세요.";
-            const keys = field? [field] : getAllQuestions().map(q=>q.key);
-            const lines = keys.map(k=>{
-                const lab = LABELS[k]||k;
-                const va = A.facts?.[k] ?? "(미답변)";
-                const vb = B.facts?.[k] ?? "(미답변)";
-                return `· ${lab}: ${a}=${va} | ${b}=${vb}`;
-            });
-            return `프로필 비교: ${a} vs ${b}\n` + lines.join("\n");
-        }
-
-        function escapeRegExp(s){ 
-            return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
-        }
-
-        function detectFieldSmart(text){
-            const base = detectField(text);
-            if (base) return base;
-            const syns = store.synonyms || {};
-            for (const [field, words] of Object.entries(syns)) {
-                for (const w of words || []) {
-                    const patt = new RegExp(escapeRegExp(w), 'i');  // 사용자 입력 패턴 안전 매칭
-                    if (patt.test(text)) return field;
-                }
-            }
-            return null;
-        }
-
-        function learnFieldUsage(field, rawQ){
-            if(!field) return;
-            state.lastField = field;
-            store.stats = store.stats || {};
-            store.stats[field] = Math.min((store.stats[field] || 0) + 1, 1e6); // 오버플로 방지
-
-            const raw = (rawQ||"").trim();
-            if (raw.length >= 6 && raw.length <= 60) {
-                store.synonyms[field] = Array.from(new Set([ ...(store.synonyms[field]||[]), raw ])).slice(-50); // 최근 50개
-            }
-        }
-
-        function respond(field, text, {save=true} = {}){
-            learnFieldUsage(field, state._lastUserText); // 마지막 사용자 입력을 학습에 사용
-            if(save){ 
-                saveCurrentToStore(); 
-                fsSaveIfConnected(); 
-            }
-            return text;
-        }
-
-        function answerQuestion(text){
-            const t = norm(text);
-            const detectedField = detectFieldSmart(text);
-            if (detectedField) state.lastField = detectedField;
-
-            //목록체크
-            const listKW = ["목록", "리스트", "무슨라면", "어떤라면"];
-            if (listKW.some(k => t.includes(k))) {
-                const names = Object.keys(store.profiles || {});
-                const active = store.active || state.ramenName || "";
-                fsSaveIfConnected?.();
-                if (!names.length) return respond(null, "아직 저장된 프로필이 없어요.");
-                const list = `프로필 목록: ${names.join(", ")}`;
-                return respond(null, active ? `${list}\n현재 활성: [${active}]` : list);
-            }
-
-            //프로필 전환
-            let m = t.match(/(?:(.+?)(?:으)?로전환|(.+?)로바꿔줘)/);
-
-            if(m){
-                const candRaw = m[1] || m[2];
-                const cand = extractProfileNameFrom(candRaw || '') || candRaw;
-                if(cand && store.profiles[cand]){
-                    saveCurrentToStore();
-                    loadProfile(cand);
-                    fsSaveIfConnected();
-                    return `프로필을 [${cand}]으로 전환했어요.`;
-                }
-                return "그 이름의 프로필을 찾지 못했어요. 기존 프로필 이름으로 다시 말씀해 주세요.";
-            }
-
-            //요약/정리
-            if(/요약|정리|프로필보여줘|세팅보여줘/.test(t)){
-                const name = extractProfileNameFrom(text) || store.active || state.ramenName;
-                if(!name) return respond(null, "어느 프로필을 요약할지 알려주세요.");
-                return respond(null, makeSummary(name));
-            }
-
-            //남은 질문
-            if (/미답변|남은질문|남은 질문|충족도|완료율|/.test(t)) {
-                const name = extractProfileNameFrom(text) || store.active || state.ramenName;
-                if (!name) return respond(null, "어느 프로필 기준인지 알려주세요.");
-
-                const prof = store.profiles?.[name];
-                if (!prof) return respond(null, "해당 프로필이 없어요.");
-
-                const total = getAllQuestions().length;
-                const answered = getAllQuestions().filter(q => prof.facts?.[q.key]).length;
-                const pct = Math.round((answered / total) * 100);
-
-                // 상태/UI 동기화: 질의한 프로필을 state에 적재해 태그/게이지가 맞게 보이도록
-                if (store.active !== name) {
-                    saveCurrentToStore();
-                    loadProfile(name); // state.facts/history를 해당 프로필로
-                }
-                renderNeeds();                // needTags 갱신
-                el('coverage').style.width = pct + "%"; // 게이지 갱신
-
-                // 충족도만 요청한 경우
-                if (/충족도|완료율|coverage|progress/.test(t)) {
-                    return respond(null, `[${name}] 충족도: ${pct}% (${answered}/${total})`);
-                }
-
-                // 남은 질문 목록/개수 반환
-                const needs = getAllQuestions()
-                    .filter(q => !prof.facts?.[q.key])
-                    .map(q => LABELS[q.key] || q.key);
-
-                const msg = needs.length
-                    ? `아직 미답변(${needs.length}/${total}): ${needs.join(", ")}`
-                    : "모든 핵심 질문이 채워졌어요!";
-
-                state.doneNotified = needs.length === 0; // 완료 안내 중복 방지 플래그 업데이트
-                return respond(null, msg);
-            }
-
-            // 5) 두 프로필 비교: "신라면과 열라면 비교", "… 물량 비교"
-            m = text.match(/(.+?)와\s+(.+?)\s*(?:비교|차이|어때|차이는?|비교해줘)/);
-            if(m){
-                const aRaw = (m[1]||"").trim();
-                const bRaw = (m[2]||"").trim();
-                const a = extractProfileNameFrom(aRaw) || aRaw;
-                const b = extractProfileNameFrom(bRaw) || bRaw;
-                const field = detectFieldSmart(text);
-                return respond(field, compareProfiles(a,b,field));
-            }
-
-            // 6) 특정 값 질의
-            const field = detectField(text);
-            if(field){
-                const name = extractProfileNameFrom(text) || store.active || state.ramenName;
-                if(!name) return respond(null, "어느 프로필의 값을 볼지 알려주세요.");
-                const prof = store.profiles?.[name];
-                if(!prof) return respond(null, "해당 프로필이 없어요.");
-                const val = prof.facts?.[field];
-                if(val===undefined || val==="") return respond(field, `[${name}]의 ${LABELS[field]||field}는 아직 미답변이에요.`);
-                return respond(field, val ? `[${name}]의 ${LABELS[field]||field}: ${val}`: `[${name}]의 ${LABELS[field]||field}는 아직 미답변이에요.`);
-            }
-
-        // 매칭 실패 → null (호출 측에서 가설(hypothesize)로 폴백)
-            return null; 
-        }
-        // --- 유틸 ---
-        const el = id => document.getElementById(id);
-
-        function addBubble(role, text, {record=true}={}){
-            if(role === 'ai'){
-                const lastAi = [...state.history].reverse().find(m => m.role === 'ai');
-                if(lastAi && lastAi.text === text){
-                    return; // 화면 중복 출력 방지
-                }
-            }
-
-            if(record) state.history.push({role,text});
-            const b = document.createElement('div');
-            b.className = `bubble ${role==='ai'?'ai':'me'}`;
-            b.innerText = text;
-            el('chat').appendChild(b);
-            el('chat').scrollTop = el('chat').scrollHeight;
-            renderSummary();
-        }
-
-        function addCustomQuestion({ key, label, p = 2, tags = ["사용자정의"] }) {
-            key = key.replace(/\s+/g, "_").toLowerCase();
-            // 중복 방지
-            if (getAllQuestions().some(q => q.key === key)) return null;
-            store.schema = store.schema || { customQuestions: [] };
-            store.schema.customQuestions.push({ key, label, p, tags });
-            LABELS[key] = label;
-            return key; // ← 항상 key(문자열) 또는 null
-        }
-
-        function getAllQuestions(){
-            return [...QUESTION_BANK, ...(store.schema.customQuestions || [])];
-        }
-
-        function allDone(){
-            return getAllQuestions().every(q => state.facts[q.key] !== undefined && state.facts[q.key] !== "");
-        }
-
-        function coverage(){
-            const total = getAllQuestions().length;
-            const answered = getAllQuestions().filter(q=> state.facts[q.key] !== undefined && state.facts[q.key] !== "").length;
-            return Math.round((answered/total)*100);
-        }
-
-        function nextQuestion(){
-            const all = getAllQuestions();
-            const unanswered = all.filter(q=> !state.facts[q.key]);
-            if(!unanswered.length) return null;
-            unanswered.sort((a,b)=> a.p===b.p ? all.indexOf(a)-all.indexOf(b) : a.p-b.p);
-            return unanswered[0];
-        }
-
-        function renderNeeds(){
-            const needs = getAllQuestions().filter(q=> !state.facts[q.key]);
-            const tagBox = el('needTags');
-            tagBox.innerHTML = '';
-            needs.slice(0,10).forEach(q=>{
-                const t = document.createElement('span');
-                t.className='tag'; 
-                t.textContent = `요청: ${(LABELS[q.key]||q.key)}`;
-                tagBox.appendChild(t);
-            });
-            el('coverage').style.width = coverage()+"%";
-        }
-
-        function renderPolicy(){
-        const box = el('policyTags'); box.innerHTML='';
-        POLICY_TAGS.forEach(line=>{
-            const [lvl,...rest]=line;
-            const group = document.createElement('span');
-            group.className='tag';
-            group.textContent = lvl+": "+rest.join(', ');
-            box.appendChild(group);
-        })
-        }
-
-        function renderSummary(){
-            const s = el('summary');
-            if(!state.ramenName){ 
-                s.textContent = '세션을 시작하면 요약이 표시됩니다.'; 
-                return; 
-            }
-            const rows = getAllQuestions().map(q=>{
-                const v = state.facts[q.key];
-                const value = (v===undefined||v==="")? '<span class="muted">(미답변)</span>' : escapeHtml(String(v));
-                const label = escapeHtml(LABELS[q.key] || q.key);
-                return `<tr><td>${label}</td><td>${value}</td></tr>`;
-            }).join('');
-            s.innerHTML = `
-            <div class="pill">활성 프로필 <b style="margin-left:6px">${escapeHtml(state.ramenName||'(없음)')}</b></div>
-            <div style="margin:.6rem 0">충족도: <b>${coverage()}%</b></div>
-            <table style="width:100%;border-collapse:collapse;border:1px solid #2a3347">
-                <tbody>${rows}</tbody>
-            </table>
-            `;
-            }
-
-        function saveCurrentToStore(){
-                if(!store.active) return;
-                store.profiles[store.active] = {
-                    facts: {...state.facts},
-                    history: [...state.history],
-                    updatedAt: Date.now(),
-                    createdAt: store.profiles[store.active]?.createdAt || Date.now()
-                };
-        }
-
-        function loadProfile(name){
-            store.active = name;
-            const p = store.profiles[name];
-            if(p){
-                state.ramenName = name;
-                state.facts = {...(p.facts||{})};
-                state.history = [...(p.history||[])];
-            }else{
-                state.ramenName = name;
-                state.facts = {};
-                state.history = [];
-                store.profiles[name] = { facts:{}, history:[], createdAt: Date.now(), updatedAt: Date.now() };
-            }
-            state.doneNotified = allDone(); // ✅ 추가
-            el('chat').innerHTML='';
-            (state.history||[]).forEach(m=>{
-                const b=document.createElement('div'); b.className=`bubble ${m.role==='ai'?'ai':'me'}`; b.innerText=m.text;
-                el('chat').appendChild(b);
-            });
-            el('chat').scrollTop=el('chat').scrollHeight;
-            renderSummary();
-        }
-
-        function escapeHtml(str){
-        return str.replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
-        }
-
-        function startSession(){
-            const name = el('ramenName').value.trim() || '나의 라면';
-            saveCurrentToStore();     // 현재 작업 중인 프로필 먼저 저장
-            loadProfile(name);        // 새/기존 프로필 불러오기
-
-            if(state.history.length===0){
-                addBubble('ai', `안녕하세요! [${state.ramenName}] 연구를 시작합니다. 제가 먼저 몇 가지 물을게요.`);
-                askNext();
-            }else{
-                addBubble('ai', `프로필 [${state.ramenName}]을(를) 불러왔어요. 이어서 진행합니다.`);
-                askNext();  
-            }
-            fsSaveIfConnected();      // 파일로 저장
-        }
-
-        function askNext(){
-            const q = nextQuestion();
-            if(!q){
-            // ✅ 완료 멘트는 한 번만
-                if(!state.doneNotified){
-                    addBubble('ai','모든 핵심 질문이 채워졌어요! 원하시면 더 깊게 파고들 질문을 해주세요.');
-                    state.doneNotified = true;
-                }
-                return;
-            }
-            // ✅ 남은 질문이 생기면 플래그 해제 (예: 질문은행 확장 등)
-            state.doneNotified = false;
-            
-            const tip = q.hint? `(힌트: ${q.hint})` : '';
-            addBubble('ai', q.text + tip);
-            renderNeeds();
-        }
-
-        function labelToKey(label){
-            const normed = label.replace(/\s+|\(.*?\)/g,"").toLowerCase();
-            let best = null, bestLen = 0;
-            for (const [k,v] of Object.entries(LABELS)){
-                const vv = String(v||"").replace(/\s+|\(.*?\)/g,"").toLowerCase();
-                if (vv === normed) return k;                 // 완전일치 우선
-                if (vv.length >= 2 && normed.includes(vv) && vv.length > bestLen){
-                best = k; bestLen = vv.length;             // 가장 긴 부분일치
-                }
-            }
-            return best;
-        }
-
-        function handleUserMessage(){
-            const text = el('msg').value.trim();
-            el('msg').value='';
-            addBubble('me', text);
-
-            const tnorm = norm(text);
-            const LIST_TOKENS = ["목록","리스트","무슨라면","어떤라면"];
-
-            // 0) 먼저 질문/명령 인텐트인지 판별 → 맞으면 answerQuestion를 우선 처리
-            const intentLike = 
-                /[?？]$/.test(text) || 
-                /(남은질문|미답변|충족도|완료율|뭐가아직|요약|프로필목록|활성프로필|전환|바꿔줘|비교|차이)/.test(tnorm) ||
-                LIST_TOKENS.some(k => tnorm.includes(k));
-
-            if (intentLike) {
-                const maybe = answerQuestion(text);
-                if (maybe) {
-                    addBubble('ai', maybe);
-                    saveCurrentToStore(); 
-                    fsSaveIfConnected();
-                    return; 
-                }
-            }
-            
-            if (state.pendingTeach) {
-                const raw = text.trim();
-                if (raw === '취소') {
-                    state.pendingTeach = null;
-                    addBubble('ai', '학습을 취소했어요.');
-                    return;
-                }
-                if (!state.pendingTeach.key) {
-                    // 1단계: 필드명 받기
-                    const label = raw.replace(/[:：]+$/,'').trim();
-                    const key = label.replace(/\s+/g, "_").toLowerCase();
-                    const createdKey = addCustomQuestion({ key, label, p: 2 });
-                    if (!createdKey) {
-                        addBubble('ai', '이미 존재하는 이름이에요. 다른 이름을 입력해 주세요.');
-                        return;
-                    }
-                    state.pendingTeach.key = createdKey;
-                    addBubble('ai', `좋아요! 앞으로 "${label}"을(를) 추적할게요. 지금 값은 어떻게 기록할까요?`);
-                    return;
-                } else {
-                    // 2단계: 값 받기 → 저장
-                    const key = state.pendingTeach.key;
-                    state.facts[key] = raw;
-                    addBubble('ai', `학습 완료! ${LABELS[key]}: ${raw}`);
-                    state.pendingTeach = null;
-                    saveCurrentToStore(); fsSaveIfConnected(); renderSummary(); askNext();
-                    return;
-                }
-            }
-
-            // 1) 빠른 전환 명령은 즉시 처리
-            if(text.startsWith('/use ')){
-                const target = text.slice(5).trim();
-                if(target){
-                saveCurrentToStore();
-                loadProfile(target);
-                addBubble('ai', `프로필을 [${target}]으로 전환했습니다.`);
-                fsSaveIfConnected();
-                if(!allDone()) askNext();
-                return;
-                }
-            }
-
-            // 2) ★ 값 입력 우선 저장 (대기 중 질문이 있으면 우선적으로 그 키에 바인딩)
-            const pending = getAllQuestions().find(q => state.facts[q.key] === undefined || state.facts[q.key] === "");
-            let consumedAsValue = false;
-
-            if(pending){
-                let val = text;
-                if(pending.key === 'boil_time'){
-                    const ms = text.match(/(\d+)\s*분(?:\s*(\d+)\s*초)?|^(\d+)\s*:\s*(\d+)$/);
-                    if (ms) {
-                    const m = parseInt(ms[1] || ms[3] || "0");
-                    const s = parseInt(ms[2] || ms[4] || "0");
-                    val = `${m}분 ${s ? s + "초" : ""}`.trim();
-                    }
-                } else if(pending.key === "water_ml"){
-                    const compact = text.replace(/\s+/g, "");
-                    const m = compact.match(/^(\d{2,4})\s*ml?$/i);
-                    if (m) val = `${m[1]}ml`;
-                }
-                state.facts[pending.key] = val;
-                consumedAsValue = true;              // ✅ 추가
-                saveCurrentToStore(); fsSaveIfConnected(); 
-                renderSummary(); renderNeeds();       // ✅ 바로 갱신
-            }
-
-            // 3) “?”가 있는 입력만 자연어 Q&A로 간주 (값 입력 오인 방지)
-            const looksQuestion = 
-                /[?？]$/.test(text) || 
-                /(몇|어떻게|알려줘|보여줘|비교|차이|요약|전환|바꿔줘)/.test(tnorm) ||
-                LIST_TOKENS.some(k => tnorm.includes(k));
-
-            if(looksQuestion){
-                const maybeAnswer = answerQuestion(text);
-                if(maybeAnswer){
-                    addBubble('ai', maybeAnswer);
-                    saveCurrentToStore();
-                    fsSaveIfConnected();
-                    if(consumedAsValue) askNext();
-                    return;
-                }
-            }
-
-            // 4) 값 저장이 없고 Q&A도 아니면 가설 제시(선택)
-            if (!consumedAsValue) {
-                // ① 학습 후보 찾기
-                const t = norm(text);
-                // 매우 단순: 문장 끝에 ? 있거나 '뭐야/알려줘' 포함 → 학습 유도
-                const looksTeach = /[?？]$/.test(text) || /(뭐야|알려줘|무엇|어떤|설명)/.test(t);
-                if (looksTeach) {
-                    // 사용자에게 필드명 붙이기 요청
-                    state.pendingTeach = { original: text }; // ★ 상태로 보관
-                    addBubble('ai', `이 질문을 저장해 배울까요? 새 필드 이름을 입력해 주세요 (예: '면 굵기').\n취소하려면 '취소'라고 입력하세요.`);
-                } else {
-                    addBubble('ai', '좋은 포인트예요. 현재 데이터 기준으로 가설을 세워볼게요…');
-                    addBubble('ai', hypothesize());
-                }
-            }
-
-            saveCurrentToStore();
-            fsSaveIfConnected();
-            if(consumedAsValue) askNext();
-        }
-
-        function hypothesize(){
-        const w = state.facts.water_ml||'물량 미정';
-        const t = state.facts.boil_time||'시간 미정';
-        const n = state.facts.noodle_type||'면 타입 미정';
-        const sp = state.facts.soup_profile||'국물 성향 미정';
-        const th = state.facts.spice_threshold||'임계 미정';
-        let tips = [];
-        const body = `현재 설정은 물 ${w}, 삶기 ${t}, 면 ${n}, 국물 ${sp}, 맵기 임계 ${th} 입니다.`
-        return body + (tips.length? "추천 실험: " + tips.join(' ') : "핵심 세팅이 거의 채워졌어요!");
-        }
-
-        // 내보내기/가져오기 (수동)
-        function exportJSON(){
-            const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `ramen_session_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url);
-        }
-
-        function importJSON(file){
-            const r = new FileReader();
-            r.onload = e => {
-                try {
-                // ★ 파싱 & 1차 검증
-                const raw = JSON.parse(e.target.result);
-                if (!raw || typeof raw !== 'object') throw new Error('형식 오류');
-
-                // ★ 화이트리스트 역직렬화 (유효 타입만 반영)
-                const ramenName =
-                    typeof raw.ramenName === 'string' && raw.ramenName.trim()
-                    ? raw.ramenName.trim()
-                    : '나의 라면';
-
-                const facts =
-                    raw.facts && typeof raw.facts === 'object' ? raw.facts : {};
-
-                // ★ history: 배열 + role/text 유효성 + 최소 필터링
-                const history = Array.isArray(raw.history)
-                    ? raw.history
-                        .filter(m =>
-                        m &&
-                        (m.role === 'ai' || m.role === 'me') &&
-                        typeof m.text === 'string'
-                        )
-                        .map(m => ({
-                        role: m.role,
-                        // textContent로 그릴 거라 XSS 걱정은 적지만, 그래도 trim
-                        text: m.text.trim()
-                        }))
-                        // (선택) 지나치게 긴 로그 방지용 슬라이싱
-                        .slice(-500)
-                    : [];
-
-                // ★ state에 검증된 값만 반영
-                state.ramenName = ramenName;
-                state.facts = facts;
-                state.history = history;
-
-                // ★ 채팅창 초기화 & 안전하게 다시 렌더 (textContent 사용)
-                const chat = el('chat');
-                chat.innerHTML = '';
-                for (const m of state.history) {
-                    const b = document.createElement('div');
-                    b.className = `bubble ${m.role === 'ai' ? 'ai' : 'me'}`;
-                    b.textContent = m.text; // ★ innerHTML 대신 textContent
-                    chat.appendChild(b);
-                }
-                chat.scrollTop = chat.scrollHeight;
-
-                // 요약/상태 갱신
-                if (typeof renderSummary === 'function') renderSummary();
-
-                store.active = state.ramenName || '나의 라면';
-                saveCurrentToStore();
-                fsSaveIfConnected();
-
-                // 안내 멘트
-                addBubble('ai', '가져온 세션을 이어서 진행합니다.', { record: true });
-                fsSaveIfConnected();
-                } catch (err) {
-                alert('JSON 형식이 올바르지 않습니다.');
-                }
-            };
-            r.readAsText(file);
-        }
-
-        // --- File System Access API: 세션 파일 연결/저장/복구 ---
-        async function pickSessionFile(){
-        if(!('showSaveFilePicker' in window)){
-            alert('이 브라우저는 파일 시스템 접근을 지원하지 않습니다. Chrome/Edge 권장');
-            return;
-        }
-        try{
-            sessionHandle = await window.showSaveFilePicker({
-            suggestedName: 'ramen_session.json',
-            types: [{ description: 'JSON', accept: {'application/json': ['.json']} }]
-            });
-            await persistHandle(sessionHandle);
-            await fsSaveIfConnected();
-            addBubble('ai','세션 파일과 연결했어요. 이제부터 자동 저장/로딩됩니다.');
-        }catch(e){ /* 사용자가 취소한 경우 등 무시 */ }
-        }
-
-        function ensureStoreScaffolding() {
-            store.version = store.version || 2;
-            store.profiles = store.profiles || {};
-            store.active = store.active || null;
-            store.schema = store.schema || { customQuestions: [] };
-            store.synonyms = store.synonyms || {};
-            store.stats = store.stats || {};
-        }
-
-        async function fsSaveIfConnected(){
-            ensureStoreScaffolding();
-        try{
-            if(!sessionHandle) sessionHandle = await restoreHandle();
-            if(!sessionHandle) return;
-
-            saveCurrentToStore(); // state→store 반영
-            const writable = await sessionHandle.createWritable();
-            await writable.write(JSON.stringify(store, null, 2));
-            await writable.close();
-        }catch(e){ /* 권한 거부/손실 시 무시 */ }
-        }
-
-        async function fsLoadIfConnected(){
-            ensureStoreScaffolding();
-            try{
-                if(!sessionHandle) sessionHandle = await restoreHandle();
-                if(!sessionHandle) return false;
-                const file = await sessionHandle.getFile();
-                const data = JSON.parse(await file.text());
-                
-                if(data && data.profiles){ // v2
-                    store.version = data.version || 2;
-                    store.profiles = data.profiles || {};
-                    store.active = data.active || Object.keys(store.profiles)[0] || null;
-                    if(store.active){
-                        loadProfile(store.active);
-                        askNext();  
-                    }else{
-                        renderPolicy(); renderSummary();
-                    }
-                    return true;
-                } else if(data && (data.ramenName || data.facts || data.history)){ // v1 → v2
-                    const name = data.ramenName || '나의 라면';
-                    store.version = 2;
-                    store.profiles = {};
-                    store.active = name;
-                    store.profiles[name] = {
-                        facts: data.facts || {},
-                        history: data.history || [],
-                        createdAt: Date.now(),
-                        updatedAt: Date.now()
-                    };
-                    loadProfile(name);
-                    addBubble('ai','구버전 세션을 새 포맷으로 마이그레이션했어요.', {record:true});
-                    await fsSaveIfConnected();          // ★ 저장 시도
-                    console.log('migrated->saved');     // ★ 저장 확인용
-                    return true;
-                }
-            }catch(e){ /* 핸들 만료/파일 삭제 등 */ }
-                return false;
-        }
-
-        // --- IndexedDB로 파일 핸들 보존 ---
-        function idb(){
-        return new Promise(res=>{
-            const req = indexedDB.open('ramen-db',1);
-            req.onupgradeneeded = ()=> req.result.createObjectStore('handles');
-            req.onsuccess = ()=> res(req.result);
-        });
-        }
-        async function persistHandle(handle){
-        const db = await idb(); const tx = db.transaction('handles','readwrite');
-        tx.objectStore('handles').put(handle,'session');
-        return new Promise(ok=>{ tx.oncomplete = ()=> ok(); });
-        }
-        async function restoreHandle(){
-        const db = await idb(); const tx = db.transaction('handles','readonly');
-        return new Promise(ok=>{
-            const r = tx.objectStore('handles').get('session');
-            r.onsuccess = ()=> ok(r.result||null);
-            r.onerror = ()=> ok(null);
-        });
-        }
-
-        // 이벤트 바인딩
-        el('start').onclick = startSession;
-        el('clear').onclick = ()=>{ 
-            state.ramenName=''; state.facts={}; state.history=[]; 
-            state.doneNotified = false; // ✅ 추가
-            el('chat').innerHTML=''; renderSummary(); 
-            try{ localStorage.removeItem('ramen_session_v1'); }catch(_){ }
-            fsSaveIfConnected();
-        };
-        el('send').onclick = handleUserMessage;
-        el('msg').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); handleUserMessage(); }});
-        el('export').onclick = exportJSON;
-        el('import').onclick = ()=> el('file').click();
-        el('file').addEventListener('change', e=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; });
-        el('connectFile').onclick = pickSessionFile;
-
-        let _dirty = false;
-
-        // 상태가 변할 때 dirty 표시
-        const markDirty = () => { _dirty = true; };
-
-        // chat창의 DOM 변경을 감시 → 채팅 추가 시 dirty 플래그 활성화
-        new MutationObserver(markDirty).observe(el('chat'), {
-            childList: true,
-            subtree: true
-        });
-
-        try{
-            setInterval(() => {
-                if (_dirty) {
-                    try {
-                    localStorage.setItem('ramen_session_v1', JSON.stringify(state));
-                    } catch (err) {
-                    console.warn('자동 저장 실패:', err);
-                    }
-                    _dirty = false;
-                }
-            }, 2000);
-        }catch(_){ }
-
-        // 페이지 로드시: 1) 파일 자동 복구 시도 -> 2) 없으면 localStorage 복구
-        window.addEventListener('load', async ()=>{
-        const loaded = await fsLoadIfConnected();
-        if(!loaded){
-            try{
-            const saved = localStorage.getItem('ramen_session_v1');
-            if(saved){
-                const data = JSON.parse(saved);
-                if(data && typeof data==='object'){
-                    Object.assign(state, data);
-                    el('chat').innerHTML='';
-                    (state.history||[]).forEach(m=>{
-                        const b = document.createElement('div');
-                        b.className = `bubble ${m.role==='ai'?'ai':'me'}`;
-                        b.innerText = m.text;
-                        el('chat').appendChild(b);
-                    });
-                    el('chat').scrollTop = el('chat').scrollHeight;
-                    renderSummary();
-                    addBubble('ai','이전 로컬 세션을 복구했어요 🍜', {record:true});
-                    askNext();  
-                } else { renderPolicy(); renderSummary(); }
-            } else { renderPolicy(); renderSummary(); }
-            }catch(_){ renderPolicy(); renderSummary(); }
-        }
-        });
-    </script>
+  </header>
+
+  <main>
+    <div class="row">
+      <div class="col card">
+        <h2>대화</h2>
+        <div id="bubbles" class="bubbles"></div>
+      </div>
+      <div class="col card">
+        <h2>프로필</h2>
+        <div id="profiles" class="profiles-list"></div>
+        <div id="facts" class="facts mt12"></div>
+        <div class="mt12 muted">필드: 물량(ml), 삶는 시간, 국물 성향, 계란 스타일</div>
+        <div class="mt16">
+          <div class="chips">
+            <div class="chip" data-q="프로필 목록">프로필 목록</div>
+            <div class="chip" data-q="요약">요약</div>
+            <div class="chip" data-q="남은 질문">남은 질문</div>
+            <div class="chip" data-q="신라면으로 전환">신라면 전환</div>
+            <div class="chip" data-q="국물 성향은 얼큰하게">국물 성향</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="composer">
+    <form id="form">
+      <input id="input" type="text" placeholder="메시지를 입력하세요. 예: 남은 질문 / 진라면으로 전환 / 물 550ml" />
+      <button class="primary" type="submit">보내기</button>
+    </form>
+  </div>
+
+<script>
+//0) 유틸
+const normalize = s => s.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();  //입력 정규화
+const squish    = s => s.replace(/\s/g, ''); //공백제거
+const say = (text, who='ai') => {   //대화 시각화
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble ' + (who === 'me' ? 'me' : 'ai');
+  wrap.textContent = text;
+  document.querySelector('#bubbles').appendChild(wrap);
+  wrap.scrollIntoView({behavior:'smooth', block:'end'});
+};
+const byId = id => document.getElementById(id); 
+
+//1) State & Persistence
+
+//전체 상태
+const STATE = {
+  version: 1,                         //데이터 구조 버전    
+  active: null,                       //활성 프로필
+  profiles: {},                       //라면 객체 저장소
+  doneNotified: false,                //완료 멘트 중복 방지
+  schema: { customQuestions: [] },    //사용자 정의 질문 저장소(미구현)
+  synonyms: {},                       //동의어 저장소(미구현)
+  stats: {}                           //통계 저장소 (미구현)
+};
+
+function ensureProfile(name) {     
+  if (!STATE.profiles[name]) {    //이름에 해당하는 프로필 없을 때 생성
+    STATE.profiles[name] = {
+      facts: {},                  //라면 속성 값 
+      history: [],                //대화 내용 
+      createdAt: Date.now(),      //생성 시간
+      updatedAt: Date.now()       //최종 수정 시간
+    };
+  }
+
+  if (!STATE.active) STATE.active = name; //이름에 해당하는 프로필 존재시 활성프로필에 등록
+}
+
+function getActiveProfile() {         //활성화된 라면의 정보 반환
+  if (!STATE.active) return null;
+  return STATE.profiles[STATE.active];
+}
+
+function getRemainingFields(p = getActiveProfile()) {
+  if (!p) return [];                                                //활성 프로필 없을 때 빈 배열 반환
+  const NEED = ['water_ml','boil_time','soup_profile','egg_style']; //필수 속성
+  return NEED.filter(k => !p.facts[k]);                           //값이 비어있는 속성 반환
+}
+
+async function loadFromFileHandle(handle) { //저장된 세션 불러오기 
+  const file = await handle.getFile();      //파일 내용을 가져옴
+  const text = await file.text();           //파일 내부의 텍스트를 읽음
+  const data = JSON.parse(text);            //JSON 문자열을 JAVAscript 객체로 변환
+  
+  ['version','profiles','active','schema','synonyms','stats'].forEach(k => {
+    if (data[k] !== undefined) STATE[k] = data[k];
+  });                                       //해당 내용을 STATE에 덮어씌움
+  renderProfiles();
+  renderFacts();
+  say('세션을 불러왔습니다.');               //말풍선 출력
+}
+
+async function saveToFileHandle(handle) {                 //세션 저장
+  const writable = await handle.createWritable();         //파일을 쓰기 모드로 준비
+  await writable.write(JSON.stringify(STATE, null, 2));   //STATE 내용을 JSON 문자열로 변환하여 파일에 기록
+  await writable.close();   
+  say('세션을 저장했습니다.');
+}
+
+let fileHandle = null;  
+
+//2) Intent Module
+const INTENTS = [
+  {
+    name: 'LIST_PROFILES',
+    anyOf: ['프로필 목록','프로필 보여줘','프로필 알려줘','목록','리스트'],
+    regex: [/(프로필|라면).*(목록|리스트|보여줘|알려줘)/]
+  },
+  {
+    name: 'SUMMARY',
+    anyOf: ['요약','정리','요약해줘','정리해줘'],
+    regex: [/(요약|정리)(해줘|해봐|해줄래)?$/]
+  },
+  {
+    name: 'REMAINING',
+    anyOf: ['남은질문','남은 질문','미답변','충족도','완료율']
+  },
+  {
+    name: 'SWITCH_PROFILE',
+    regex: [/(.+?)(?:으)?로\s*(전환|바꿔줘|바꿔)$/],
+    extract: (m) => ({ target: m[1].trim() })
+  },
+  {
+    name: 'ASK_SOUP_PROFILE',
+    regex: [/((국물|스프).*(성향|맛)|맛\s*성향)/]
+  },
+];
+
+function guessField(t) {
+  if (/물|ml|cc/.test(t)) return 'water_ml';
+  if (/(삶|끓|타이머|분|초)/.test(t)) return 'boil_time';
+  if (/계란|달걀|수란|반숙|완숙|스크램블/.test(t)) return 'egg_style';
+  if (/((국물|스프).*(성향|맛)|맛\s*성향)/.test(t)) return 'soup_profile';
+  return null;
+}
+
+function detectIntent(raw) {
+  const t = normalize(raw);
+  const tNS = squish(t);
+  for (const it of INTENTS) {
+    if (it.anyOf && it.anyOf.some(k => {
+      const nk = normalize(k);
+      return t.includes(nk) || tNS.includes(squish(nk));
+    })) return { type: it.name };
+    if (it.regex) for (const r of it.regex) {
+      const m = t.match(r);
+      if (m) return { type: it.name, ...(it.extract ? it.extract(m) : {}) };
+    }
+  }
+  const field = guessField(t);
+  return field ? { type: 'ASK_FIELD', field } : { type: 'UNKNOWN' };
+}
+
+//3) Domain Handlers
+function showProfiles() {
+  const names = Object.keys(STATE.profiles);
+  if (names.length === 0) return say('저장된 프로필이 없습니다. 예: "신라면으로 전환"을 입력해 새 프로필을 만드세요.');
+  say('프로필 목록: ' + names.map(n => STATE.active === n ? `${n}★` : n).join(', '));
+}
+
+function showSummary() {
+  const p = getActiveProfile();
+  if (!p) return say('활성 프로필이 없습니다. 먼저 "○○로 전환"으로 프로필을 선택하세요.');
+  const w  = p.facts.water_ml   || '물량 미정';
+  const bt = p.facts.boil_time  || '시간 미정';
+  const sp = p.facts.soup_profile || '국물 성향 미정';
+  const egg= p.facts.egg_style  || '계란 미정';
+  say(`현재 설정: 물 ${w}, 삶기 ${bt}, 국물 ${sp}, 계란 ${egg}.` + 
+      (getRemainingFields(p).length ? ' 핵심 세팅이 거의 채워졌어요!' : ' 핵심 세팅 완료!'));
+}
+
+function showRemaining() {
+  const p = getActiveProfile();
+  if (!p) return say('활성 프로필이 없습니다.');
+  const rem = getRemainingFields(p);
+  if (rem.length === 0) {
+    if (!STATE.doneNotified) {
+      STATE.doneNotified = true;
+      say('모든 핵심 세팅이 완료되었습니다! 🎉 "요약"을 확인해 보세요.');
+    } else {
+      say('이미 모든 항목이 채워졌습니다. "요약"을 입력해 보세요!');
+    }
+  } else {
+    STATE.doneNotified = false;
+    say(`남은 질문: ${rem.join(', ')}`);
+  }
+}
+
+function switchProfile(target) {
+  if (!target) return say('전환할 프로필 이름이 필요해요.');
+  ensureProfile(target);
+  STATE.active = target;
+  STATE.profiles[target].updatedAt = Date.now();
+  renderProfiles();
+  renderFacts();
+  say(`프로필을 [${target}]으로 전환했어요.`);
+}
+
+function askField(field, input) {
+  const p = getActiveProfile();
+  if (!p) return say('먼저 프로필을 선택하세요. "신라면으로 전환" 등을 입력하면 됩니다.');
+  // 간단 파서
+  const t = normalize(input);
+  if (field === 'water_ml') {
+    const m = t.match(/(\d{2,4})\s*(ml|cc)?/);
+    if (m) {
+      p.facts.water_ml = `${m[1]}ml`;
+      renderFacts(); say(`물량을 ${p.facts.water_ml}로 기록했어요.`); return;
+    }
+    return say('물 용량을 알려주세요. 예: 500ml');
+  }
+  if (field === 'boil_time') {
+    const m = t.match(/(\d+)\s*분?\s*(\d+)?\s*초?/);
+    if (m) {
+      const mm = m[1], ss = m[2]||'0';
+      p.facts.boil_time = `${mm}분 ${ss}초`;
+      renderFacts(); say(`삶는 시간을 ${p.facts.boil_time}로 기록했어요.`); return;
+    }
+    return say('삶는 시간을 알려주세요. 예: 4분 30초');
+  }
+  if (field === 'soup_profile') {
+    const m = t.match(/(순한맛|담백|적당히 매운맛|얼큰|매운|진한|가벼운)/);
+    p.facts.soup_profile = m ? m[1].replace('얼큰','얼큰한') : '기본';
+    renderFacts(); return say(`국물 성향을 ${p.facts.soup_profile}으로 기록했어요.`);
+  }
+  if (field === 'egg_style') {
+    const m = t.match(/(수란|반숙|완숙|스크램블|계란 없음)/);
+    p.facts.egg_style = m ? m[1] : '계란 없음';
+    renderFacts(); return say(`계란 스타일을 ${p.facts.egg_style}로 기록했어요.`);
+  }
+  return say('해당 필드를 이해하지 못했어요.');
+}
+
+function handleField(field, input) {
+  if (!field) return say('무슨 뜻인지 잘 못 알아들었어요. "남은 질문"이나 "요약"을 시도해 보세요.');
+  return askField(field, input);
+}
+
+/* ========================
+   4) UI Render
+======================== */
+function renderProfiles() {
+  const root = byId('profiles'); root.innerHTML='';
+  const names = Object.keys(STATE.profiles);
+  if (names.length === 0) { root.textContent = '프로필이 없습니다.'; return; }
+  names.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'profile-item' + (STATE.active === n ? ' active' : '');
+    el.textContent = n;
+    el.onclick = () => switchProfile(n);
+    root.appendChild(el);
+  });
+}
+
+function renderFacts() {
+  const root = byId('facts'); root.innerHTML='';
+  const p = getActiveProfile();
+  if (!p) { root.textContent = '활성 프로필 없음'; return; }
+  const pairs = [
+    ['물량(ml)','water_ml'], ['삶는 시간','boil_time'],
+    ['국물 성향','soup_profile'], ['계란 스타일','egg_style']
+  ];
+  for (const [k, key] of pairs) {
+    const rowK = document.createElement('div'); rowK.className='k'; rowK.textContent=k;
+    const rowV = document.createElement('div'); rowV.className='v'; rowV.textContent=p.facts[key]||'-';
+    root.appendChild(rowK); root.appendChild(rowV);
+  }
+}
+
+/* ========================
+   5) Orchestrator
+======================== */
+function answerQuestion(input) {
+  const intent = detectIntent(input);
+  switch (intent.type) {
+    case 'LIST_PROFILES': return showProfiles();
+    case 'SUMMARY': return showSummary();
+    case 'REMAINING': return showRemaining();
+    case 'SWITCH_PROFILE': return switchProfile(intent.target);
+    case 'ASK_SOUP_PROFILE': return askField('soup_profile', input);
+    case 'ASK_FIELD': return handleField(intent.field, input);
+    case 'UNKNOWN':
+    default: return say('잘 이해하지 못했어요. "남은 질문", "요약", "○○로 전환" 등을 시도해 보세요.');
+  }
+}
+
+/* ========================
+   6) Events
+======================== */
+byId('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const inp = byId('input');
+  const text = inp.value.trim();
+  if (!text) return;
+  say(text, 'me');
+  answerQuestion(text);
+  // 기록
+  const p = getActiveProfile();
+  if (p) {
+    p.history.push({role:'me', text});
+    if (p.history.length > 200) p.history.shift();
+    p.updatedAt = Date.now();
+  }
+  inp.value='';
+});
+
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (chip?.dataset.q) {
+    const q = chip.dataset.q;
+    say(q, 'me');
+    answerQuestion(q);
+  }
+});
+
+byId('btnLoad').addEventListener('click', async () => {
+  if (!window.showOpenFilePicker) { say('이 브라우저는 파일 선택 API를 지원하지 않습니다.'); return; }
+  try {
+    const [h] = await showOpenFilePicker({types:[{description:'JSON', accept:{'application/json':['.json']}}]});
+    fileHandle = h;
+    await loadFromFileHandle(h);
+  } catch (e) {
+    // 취소 등
+  }
+});
+
+byId('btnSave').addEventListener('click', async () => {
+  if (!window.showSaveFilePicker) { say('이 브라우저는 파일 저장 API를 지원하지 않습니다.'); return; }
+  try {
+    if (!fileHandle) {
+      fileHandle = await showSaveFilePicker({suggestedName:'ramen_session.json', types:[{description:'JSON', accept:{'application/json':['.json']}}]});
+    }
+    await saveToFileHandle(fileHandle);
+  } catch (e) {
+    // 취소 등
+  }
+});
+</script>
 </body>
 </html>
